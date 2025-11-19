@@ -1,4 +1,5 @@
-import { OrnamentType, TreeStatus } from "@prisma/client";
+export type TreeStatus = "DRAFT" | "COMPLETED";
+export type OrnamentType = "FREE_GACHA" | "PAID_UPLOAD";
 
 export type TreeSummary = {
   id: string;

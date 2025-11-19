@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { OrnamentType } from "@prisma/client";
+import type { OrnamentType } from "@/src/lib/types";
 
 type OrnamentSummary = {
   slotIndex: number;

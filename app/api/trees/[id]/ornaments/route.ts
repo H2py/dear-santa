@@ -1,4 +1,3 @@
-import { OrnamentType, TreeStatus } from "@prisma/client";
 import { prisma } from "@/src/lib/prisma";
 import { badRequest, forbidden, notFound, ok, unauthorized } from "@/src/lib/api";
 import { getCurrentUser } from "@/src/lib/auth";
@@ -23,9 +22,12 @@ export async function POST(
   try {
     const slotIndex = inRange(requiredInt(body.slotIndex, "slotIndex"), 0, 9, "slotIndex");
     const type = requiredString(body.type, "type");
+    if (type !== "FREE_GACHA" && type !== "PAID_UPLOAD") {
+      return badRequest("invalid ornament type");
+    }
     const imageUrl = requiredString(body.imageUrl, "imageUrl");
 
-    if (tree.ornaments.some((o) => o.slotIndex === slotIndex)) {
+    if (tree.ornaments.some((o: { slotIndex: number }) => o.slotIndex === slotIndex)) {
       return badRequest("slot already filled");
     }
 
@@ -34,7 +36,7 @@ export async function POST(
         treeId: tree.id,
         ownerId: user.id,
         slotIndex,
-        type: type as OrnamentType,
+        type,
         imageUrl,
       },
       select: {
@@ -48,10 +50,10 @@ export async function POST(
     // mark completed if full (10 slots)
     const filled = tree.ornaments.length + 1;
     let updatedTree;
-    if (filled >= 10 && tree.status !== TreeStatus.COMPLETED) {
+    if (filled >= 10 && tree.status !== "COMPLETED") {
       updatedTree = await prisma.tree.update({
         where: { id: tree.id },
-        data: { status: TreeStatus.COMPLETED, completedAt: new Date() },
+        data: { status: "COMPLETED", completedAt: new Date() },
         select: { id: true, status: true, completedAt: true },
       });
     }
