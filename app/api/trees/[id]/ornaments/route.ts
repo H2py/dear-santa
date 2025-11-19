@@ -1,10 +1,4 @@
-import {
-  OrnamentAuditType,
-  OrnamentType,
-  PaymentStatus,
-  PaymentType,
-  TreeStatus,
-} from "@prisma/client";
+import { OrnamentType, TreeStatus } from "@prisma/client";
 import { prisma } from "@/src/lib/prisma";
 import { badRequest, forbidden, notFound, ok, unauthorized } from "@/src/lib/api";
 import { getCurrentUser } from "@/src/lib/auth";
