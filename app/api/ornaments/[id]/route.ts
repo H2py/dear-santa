@@ -1,4 +1,3 @@
-import { PaymentStatus, PaymentType } from "@prisma/client";
 import { prisma } from "@/src/lib/prisma";
 import { forbidden, notFound, ok, unauthorized } from "@/src/lib/api";
 import { getCurrentUser } from "@/src/lib/auth";
@@ -22,9 +21,9 @@ export async function DELETE(
   const payment = await prisma.payment.create({
     data: {
       userId: user.id,
-      paymentType: PaymentType.ORNAMENT_DELETE,
+      paymentType: "ORNAMENT_DELETE",
       amountCents: 50,
-      status: PaymentStatus.SUCCESS,
+      status: "SUCCESS",
       provider: "stub",
       metadata: { treeId: ornament.treeId, ornamentId: ornament.id },
     },
