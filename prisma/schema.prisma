@@ -1,0 +1,176 @@
+datasource db {
+  provider = "postgresql"
+  url       = env("POSTGRES_URL_NON_POOLING")             // pooling(6543)
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  guestId        String?  @unique
+  walletAddress  String?  @unique
+  walletVerifiedAt DateTime?
+  inviteCode     String?  @unique
+  gachaTickets   Int      @default(3)
+  totalLikesUsed Int      @default(0)
+
+  trees            Tree[]
+  ornaments        Ornament[]
+  likes            Like[]
+  referralsSent    Referral[] @relation("Referrer")
+  referredBy       Referral?  @relation("Referred", fields: [referredById], references: [id])
+  referredById     String?  @unique
+  rewards          Reward[]
+  payments         Payment[]
+  ornamentAudits   OrnamentAudit[]
+  rewardClaims     RewardClaim[]
+}
+
+model Tree {
+  id          String     @id @default(cuid())
+  ownerId     String
+  owner       User       @relation(fields: [ownerId], references: [id])
+  background  String
+  shape       String
+  status      TreeStatus @default(DRAFT)
+  likeCount   Int        @default(0)
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  shareCode   String?    @unique
+
+  ornaments Ornament[]
+  likes     Like[]
+  referrals Referral[]
+  ornamentAudits OrnamentAudit[]
+}
+
+enum TreeStatus {
+  DRAFT
+  COMPLETED
+}
+
+model Ornament {
+  id        String       @id @default(cuid())
+  treeId    String
+  tree      Tree         @relation(fields: [treeId], references: [id])
+  ownerId   String
+  owner     User         @relation(fields: [ownerId], references: [id])
+  type      OrnamentType
+  imageUrl  String
+  slotIndex Int
+  createdAt DateTime     @default(now())
+
+  audits OrnamentAudit[]
+
+  @@unique([treeId, slotIndex])
+}
+
+enum OrnamentType {
+  FREE_GACHA
+  PAID_UPLOAD
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  treeId    String
+  tree      Tree     @relation(fields: [treeId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, treeId])
+}
+
+model Referral {
+  id           String   @id @default(cuid())
+  referrerId   String
+  referrer     User     @relation("Referrer", fields: [referrerId], references: [id])
+  referredUser User?    @relation("Referred")
+  createdAt    DateTime @default(now())
+  code         String   @unique
+  treeId       String?
+  tree         Tree?    @relation(fields: [treeId], references: [id])
+}
+
+model Reward {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    String
+  claimed   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  claims RewardClaim[]
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+  amountCents       Int
+  currency          String        @default("USD")
+  paymentType       PaymentType
+  provider          String        @default("internal")
+  providerPaymentId String?
+  status            PaymentStatus @default(PENDING)
+  metadata          Json?
+  createdAt         DateTime      @default(now())
+
+  ornamentAudits OrnamentAudit[]
+}
+
+model OrnamentAudit {
+  id           String            @id @default(cuid())
+  ornamentId   String?
+  ornament     Ornament?         @relation(fields: [ornamentId], references: [id])
+  treeId       String?
+  tree         Tree?             @relation(fields: [treeId], references: [id])
+  actorId      String
+  actor        User              @relation(fields: [actorId], references: [id])
+  action       OrnamentAuditType
+  paymentId    String?
+  payment      Payment?          @relation(fields: [paymentId], references: [id])
+  detail       Json?
+  createdAt    DateTime          @default(now())
+}
+
+model RewardClaim {
+  id         String      @id @default(cuid())
+  rewardId   String
+  reward     Reward      @relation(fields: [rewardId], references: [id])
+  userId     String
+  user       User        @relation(fields: [userId], references: [id])
+  wallet     String
+  txHash     String?
+  claimedAt  DateTime    @default(now())
+  status     ClaimStatus @default(PENDING)
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum PaymentType {
+  GACHA_TICKET_PURCHASE
+  PREMIUM_UPLOAD
+  ORNAMENT_DELETE
+  DIRECT_TOP_UP
+}
+
+enum OrnamentAuditType {
+  CREATED_FREE_GACHA
+  CREATED_PAID_UPLOAD
+  DELETED_BY_OWNER
+  DELETED_BY_ADMIN
+}
+
+enum ClaimStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
