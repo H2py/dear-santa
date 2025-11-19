@@ -1,8 +1,4 @@
-import {
-  OrnamentAuditType,
-  PaymentStatus,
-  PaymentType,
-} from "@prisma/client";
+import { PaymentStatus, PaymentType } from "@prisma/client";
 import { prisma } from "@/src/lib/prisma";
 import { forbidden, notFound, ok, unauthorized } from "@/src/lib/api";
 import { getCurrentUser } from "@/src/lib/auth";
@@ -42,7 +38,7 @@ export async function DELETE(
         ornamentId: ornament.id,
         treeId: ornament.treeId,
         actorId: user.id,
-        action: OrnamentAuditType.DELETED_BY_OWNER,
+        action: "DELETED_BY_OWNER",
         paymentId: payment.id,
       },
     }),
