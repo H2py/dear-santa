@@ -13,13 +13,14 @@ import { inRange, requiredInt, requiredString } from "@/src/lib/validation";
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return unauthorized();
 
   const tree = await prisma.tree.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { ornaments: true },
   });
   if (!tree) return notFound("tree not found");

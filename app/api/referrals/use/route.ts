@@ -1,7 +1,6 @@
 import { prisma } from "@/src/lib/prisma";
 import { badRequest, ok, unauthorized } from "@/src/lib/api";
 import { getCurrentUser } from "@/src/lib/auth";
-import { incrementTickets } from "@/src/lib/user";
 import { requiredString } from "@/src/lib/validation";
 
 const REFERRER_TICKET_BONUS = 1;
@@ -23,14 +22,22 @@ export async function POST(req: Request) {
       return badRequest("cannot refer yourself");
     }
 
-    const [updatedUser] = await prisma.$transaction([
+    await prisma.$transaction([
       prisma.user.update({
         where: { id: user.id },
         data: { referredById: referral.id },
         select: { id: true },
       }),
-      incrementTickets(user.id, REFERRED_TICKET_BONUS),
-      incrementTickets(referral.referrerId, REFERRER_TICKET_BONUS),
+      prisma.user.update({
+        where: { id: user.id },
+        data: { gachaTickets: { increment: REFERRED_TICKET_BONUS } },
+        select: { id: true },
+      }),
+      prisma.user.update({
+        where: { id: referral.referrerId },
+        data: { gachaTickets: { increment: REFERRER_TICKET_BONUS } },
+        select: { id: true },
+      }),
     ]);
 
     return ok({
