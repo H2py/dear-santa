@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { OrnamentType } from "@prisma/client";
 import { badRequest, ok, unauthorized } from "@/src/lib/api";
 import { getCurrentUser } from "@/src/lib/auth";
 import { decrementTicket, incrementTickets } from "@/src/lib/user";
@@ -33,7 +32,7 @@ export async function POST(req: Request) {
     ornaments: [
       {
         tempId: `tmp_${randomUUID()}`,
-        type: OrnamentType.FREE_GACHA,
+        type: "FREE_GACHA",
         imageUrl,
       },
     ],
