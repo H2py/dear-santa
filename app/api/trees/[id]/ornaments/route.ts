@@ -35,41 +35,6 @@ export async function POST(
       return badRequest("slot already filled");
     }
 
-    // gacha draw는 /api/gacha/draw에서 티켓 차감 처리, 부착 시에는 추가 차감하지 않음.
-    // PAID_UPLOAD는 결제 검증을 통과시키고 Payment + OrnamentAudit를 남김.
-
-    let paymentId: string | undefined;
-    if (type === OrnamentType.PAID_UPLOAD) {
-      if (body.paymentId) {
-        const payment = await prisma.payment.findUnique({
-          where: { id: body.paymentId },
-        });
-        if (!payment || payment.userId !== user.id) {
-          return forbidden("invalid payment");
-        }
-        if (
-          payment.paymentType !== PaymentType.PREMIUM_UPLOAD ||
-          payment.status !== PaymentStatus.SUCCESS
-        ) {
-          return badRequest("payment is not valid for upload");
-        }
-        paymentId = payment.id;
-      } else {
-        const payment = await prisma.payment.create({
-          data: {
-            userId: user.id,
-            paymentType: PaymentType.PREMIUM_UPLOAD,
-            amountCents: 100,
-            status: PaymentStatus.SUCCESS,
-            provider: "stub",
-            metadata: { treeId: tree.id, slotIndex },
-          },
-          select: { id: true },
-        });
-        paymentId = payment.id;
-      }
-    }
-
     const ornament = await prisma.ornament.create({
       data: {
         treeId: tree.id,
@@ -83,20 +48,6 @@ export async function POST(
         slotIndex: true,
         type: true,
         imageUrl: true,
-      },
-    });
-
-    await prisma.ornamentAudit.create({
-      data: {
-        ornamentId: ornament.id,
-        treeId: tree.id,
-        actorId: user.id,
-        action:
-          type === OrnamentType.PAID_UPLOAD
-            ? OrnamentAuditType.CREATED_PAID_UPLOAD
-            : OrnamentAuditType.CREATED_FREE_GACHA,
-        paymentId,
-        detail: { imageUrl },
       },
     });
 
