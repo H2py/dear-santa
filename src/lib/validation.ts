@@ -1,11 +1,11 @@
-export const requiredString = (value: any, name: string) => {
+export const requiredString = (value: unknown, name: string) => {
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`${name} is required`);
   }
   return value.trim();
 };
 
-export const requiredInt = (value: any, name: string) => {
+export const requiredInt = (value: unknown, name: string) => {
   const n = Number(value);
   if (!Number.isInteger(n)) throw new Error(`${name} must be integer`);
   return n;

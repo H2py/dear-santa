@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
-export const ok = <T>(data: T, init?: number | ResponseInit) =>
-  NextResponse.json(data as any, init as any);
+export const ok = <T>(data: T, init?: number | ResponseInit) => {
+  const responseInit = typeof init === "number" ? { status: init } : init;
+  return NextResponse.json<T>(data, responseInit);
+};
 
 export const badRequest = (message: string) =>
   NextResponse.json({ error: message }, { status: 400 });
