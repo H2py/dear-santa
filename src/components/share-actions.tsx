@@ -9,8 +9,9 @@ export function ShareActions({ url }: { url: string }) {
     try {
       await navigator.clipboard.writeText(url);
       setMessage("링크를 클립보드에 복사했어요.");
-    } catch (err: any) {
-      setMessage(err.message ?? "복사에 실패했어요.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "복사에 실패했어요.";
+      setMessage(msg);
     }
   };
 
