@@ -1,13 +1,18 @@
 import Link from "next/link";
 import { cookies, headers } from "next/headers";
+import { notFound } from "next/navigation";
 import { apiFetch } from "@/src/lib/api-client";
-import type { TreeDetail, OrnamentSummary } from "@/src/lib/types";
+import type { TreeDetail } from "@/src/lib/types";
 import { TreeActions } from "@/src/components/tree-actions";
 import { ShareActions } from "@/src/components/share-actions";
 import { TreePreview } from "@/src/components/tree-preview";
 
 async function getTree(id: string) {
-  return apiFetch<{ tree: TreeDetail }>(`/api/trees/${id}`, { cache: "no-store" });
+  try {
+    return await apiFetch<{ tree: TreeDetail }>(`/api/trees/${id}`, { cache: "no-store" });
+  } catch {
+    return null;
+  }
 }
 
 export default async function TreePage({
@@ -19,8 +24,8 @@ export default async function TreePage({
 }) {
   const { id } = await params;
   const { ref, invite } = await searchParams;
-  const hdrs = await headers();
-  const host = hdrs.get("host") ?? "localhost:3000";
+  const headerList = await headers();
+  const host = headerList.get("host") ?? "localhost:3000";
   const protocol = host.includes("localhost") ? "http" : "https";
   const origin = process.env.NEXT_PUBLIC_BASE_URL ?? `${protocol}://${host}`;
 
@@ -30,7 +35,9 @@ export default async function TreePage({
   // Persist referrer info for later use (likes/ornaments creation)
   if (ref) {
     const store = await cookies();
-    store.set("referrer", ref, {
+    store.set({
+      name: "referrer",
+      value: ref,
       httpOnly: false,
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7,
@@ -48,7 +55,11 @@ export default async function TreePage({
     }).catch(() => {});
   }
 
-  const { tree } = await getTree(id);
+  const result = await getTree(id);
+  if (!result) {
+    notFound();
+  }
+  const { tree } = result;
   const shareRef = tree.shareCode ?? tree.owner.id;
   const shareUrl = `${origin}/tree/${tree.id}?ref=${shareRef}&tree_id=${tree.id}`;
 
@@ -68,7 +79,6 @@ export default async function TreePage({
         <TreePreview
           treeId={tree.id}
           background={tree.background}
-          shape={tree.shape}
           likeCount={tree.likeCount}
           liked={tree.likedByCurrentUser}
           ornaments={tree.ornaments.map((o) => ({
@@ -82,16 +92,11 @@ export default async function TreePage({
         <TreeActions
           treeId={tree.id}
           ornaments={tree.ornaments.map((o) => ({ slotIndex: o.slotIndex }))}
-          canLike={false}
-          likeCount={tree.likeCount}
         />
       </section>
 
       <section className="mt-6 space-y-3">
         <ShareActions url={shareUrl} />
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
-          친구에게 링크를 보내 트리를 완성하세요! 함께 크리스마스 선물을 받아보세요
-        </div>
       </section>
     </main>
   );

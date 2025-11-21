@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -18,21 +19,11 @@ const backgrounds: BgOption[] = [
   { id: "10", label: "Candy Cane", price: "0.5 XMAS" },
 ];
 
-const shapes = [
-  { id: "classic", label: "Classic" },
-  { id: "pixel", label: "Pixel" },
-  { id: "cyber", label: "Cyber" },
-];
-const shapeFilters: Record<string, string> = {
-  classic: "none",
-  pixel: "saturate(1.4)",
-  cyber: "hue-rotate(120deg) saturate(1.2)",
-};
+const DEFAULT_SHAPE = "classic";
 
 export default function CreateTreePage() {
   const router = useRouter();
   const [bgIndex, setBgIndex] = useState(0);
-  const [shape, setShape] = useState(shapes[0].id);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [createdTreeId, setCreatedTreeId] = useState<string | null>(null);
@@ -49,15 +40,48 @@ export default function CreateTreePage() {
     setBgIndex((prev) => (prev - 1 + backgrounds.length) % backgrounds.length);
   const handleNext = () => setBgIndex((prev) => (prev + 1) % backgrounds.length);
 
+  const requestWalletSignature = async () => {
+    type EthereumProvider = {
+      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+    };
+    const eth = (window as typeof window & { ethereum?: EthereumProvider }).ethereum;
+    if (!eth) throw new Error("지갑이 감지되지 않았습니다 (MetaMask 등 설치 필요)");
+
+    const accounts = await eth.request({ method: "eth_requestAccounts" });
+    if (!Array.isArray(accounts) || typeof accounts[0] !== "string") {
+      throw new Error("지갑 주소를 가져올 수 없습니다.");
+    }
+    const account = accounts[0];
+
+    const signedMessage = `Zeta Tree: 배경 ${selectedBg.id} 트리 민트 승인 (${Date.now()})`;
+    const signatureResult = await eth.request({
+      method: "personal_sign",
+      params: [signedMessage, account],
+    });
+    if (typeof signatureResult !== "string") {
+      throw new Error("지갑 서명에 실패했습니다.");
+    }
+    const signature = signatureResult;
+    return { account, signature, signedMessage };
+  };
+
   const handleCreate = async () => {
     setMessage(null);
     setLoading(true);
     try {
+      const { account, signature, signedMessage } = await requestWalletSignature();
+
       await fetch("/api/auth/guest", { method: "POST" });
       const res = await fetch("/api/trees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ background: selectedBg.id, shape }),
+        body: JSON.stringify({
+          background: selectedBg.id,
+          shape: DEFAULT_SHAPE,
+          walletAddress: account,
+          signature,
+          signedMessage,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "트리 생성에 실패했습니다.");
@@ -66,8 +90,9 @@ export default function CreateTreePage() {
       setShareUrl(`${origin}/?treeId=${data.tree.id}`);
       setMessage("트리를 만들었어요! 이제 친구를 초대해 오너먼트를 받아보세요.");
       router.refresh();
-    } catch (err: any) {
-      setMessage(err.message ?? "에러가 발생했습니다.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "에러가 발생했습니다.";
+      setMessage(msg);
     } finally {
       setLoading(false);
     }
@@ -91,15 +116,15 @@ export default function CreateTreePage() {
               style={{ backgroundImage: `url(${previewSrc})` }}
             >
               <div className="relative flex h-full items-center justify-center">
-                <img
+                <Image
                   src="/tree.png"
                   alt="tree"
+                  width={224}
+                  height={224}
                   className="h-56 w-auto drop-shadow-[0_10px_25px_rgba(16,185,129,0.35)]"
-                  style={{ filter: shapeFilters[shape] ?? "none" }}
+                  priority
+                  draggable={false}
                 />
-                <div className="absolute bottom-3 right-3 rounded-full bg-black/50 px-3 py-1 text-sm font-semibold text-white">
-                  {shapes.find((s) => s.id === shape)?.label ?? shape}
-                </div>
               </div>
             </div>
           </div>
@@ -121,25 +146,6 @@ export default function CreateTreePage() {
             >
               ➡️
             </button>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-white">트리 모양</p>
-          <div className="grid grid-cols-3 gap-2">
-            {shapes.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setShape(s.id)}
-                className={`rounded-xl border px-3 py-2 text-sm ${
-                  shape === s.id
-                    ? "border-emerald-300 bg-emerald-400/20 text-emerald-100"
-                    : "border-white/10 bg-white/5 text-slate-300"
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
           </div>
         </div>
 
@@ -174,8 +180,9 @@ export default function CreateTreePage() {
                   try {
                     await navigator.clipboard.writeText(shareUrl);
                     setShareMsg("링크를 클립보드에 복사했어요.");
-                  } catch (err: any) {
-                    setShareMsg(err?.message ?? "복사에 실패했습니다.");
+                  } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : "복사에 실패했습니다.";
+                    setShareMsg(msg);
                   }
                 }}
               >
