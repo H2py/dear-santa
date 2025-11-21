@@ -55,13 +55,15 @@ export async function DELETE(
   });
   if (!existing) return badRequest("not liked");
 
-  await prisma.$transaction([
-    prisma.like.delete({ where: { id: existing.id } }),
-    prisma.tree.update({
-      where: { id },
-      data: { likeCount: { decrement: 1 } },
-    }),
-  ]);
+  const deleted = await prisma.like.deleteMany({
+    where: { userId: user.id, treeId: id },
+  });
+  if (deleted.count === 0) return badRequest("not liked");
+
+  await prisma.tree.update({
+    where: { id },
+    data: { likeCount: { decrement: 1 } },
+  });
   const { totalLikesUsed } = await decrementLikesUsed(user.id);
 
   return ok({

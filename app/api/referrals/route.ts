@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/src/lib/prisma";
-import { badRequest, ok, unauthorized } from "@/src/lib/api";
+import { ok, unauthorized } from "@/src/lib/api";
 import { getCurrentUser } from "@/src/lib/auth";
 
 const shortCode = () => randomUUID().replace(/-/g, "").slice(0, 10);

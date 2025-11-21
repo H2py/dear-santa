@@ -1,5 +1,5 @@
 import { prisma } from "@/src/lib/prisma";
-import { getCurrentUser, sanitizeUser } from "@/src/lib/auth";
+import { getCurrentUser } from "@/src/lib/auth";
 import { notFound, ok } from "@/src/lib/api";
 
 export async function GET(

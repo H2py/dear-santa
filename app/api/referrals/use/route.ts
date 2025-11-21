@@ -10,9 +10,12 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return unauthorized();
 
-  const body = await req.json();
+  const body = (await req.json().catch(() => ({}))) as unknown;
   try {
-    const code = requiredString(body.code, "code");
+    const code = requiredString(
+      typeof body === "object" && body !== null ? (body as Record<string, unknown>).code : undefined,
+      "code"
+    );
 
     if (user.referredById) return badRequest("already referred");
 
@@ -49,7 +52,8 @@ export async function POST(req: Request) {
         referrer: REFERRER_TICKET_BONUS,
       },
     });
-  } catch (err: any) {
-    return badRequest(err.message ?? "invalid payload");
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "invalid payload";
+    return badRequest(message);
   }
 }

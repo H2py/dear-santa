@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/src/lib/prisma";
 import { getCurrentUser } from "@/src/lib/auth";
 import { badRequest, ok, unauthorized } from "@/src/lib/api";
+import { getTreeContract } from "@/src/lib/onchain";
+import { verifyMessage, type Address, type Hex } from "viem";
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -10,7 +12,20 @@ export async function POST(req: Request) {
   const body = await req.json();
   const background = String(body?.background ?? "");
   const shape = body?.shape;
+  const walletAddress =
+    typeof body?.walletAddress === "string" ? (body.walletAddress as Address) : undefined;
+  const signature = typeof body?.signature === "string" ? (body.signature as Hex) : undefined;
+  const signedMessage = typeof body?.signedMessage === "string" ? body.signedMessage : undefined;
+
   if (!background || !shape) return badRequest("background and shape are required");
+  if (!walletAddress || !signature || !signedMessage) return badRequest("wallet verification failed");
+
+  const checks = await verifyMessage({
+    address: walletAddress,
+    message: signedMessage,
+    signature,
+  });
+  if (!checks) return badRequest("signature invalid");
 
   const shareCode = randomUUID().slice(0, 10);
   const tree = await prisma.tree.create({
@@ -31,10 +46,26 @@ export async function POST(req: Request) {
     },
   });
 
-  return ok({ tree });
+  const origin = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ?? new URL(req.url).origin;
+  const metadataUri = `${origin}/api/metadata/${tree.id}`;
+
+  try {
+    if (!user.walletAddress || user.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { walletAddress },
+      });
+    }
+
+    const contract = getTreeContract();
+    const txHash = await contract.write.mintTree([walletAddress as Address, tree.id, metadataUri]);
+    return ok({ tree, txHash, metadataUri });
+  } catch (err: any) {
+    return badRequest(err?.message ?? "failed to mint");
+  }
 }
 
-export async function GET(req: Request) {
+export async function GET() {
   // leader-like feed? Spec uses /api/leaderboard; keep GET /api/trees as simple list of my trees
   const user = await getCurrentUser();
   if (!user) return unauthorized();

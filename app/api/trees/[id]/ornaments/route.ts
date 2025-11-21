@@ -1,7 +1,6 @@
 import { prisma } from "@/src/lib/prisma";
-import { badRequest, forbidden, notFound, ok, unauthorized } from "@/src/lib/api";
+import { badRequest, notFound, ok, unauthorized } from "@/src/lib/api";
 import { getCurrentUser } from "@/src/lib/auth";
-import { decrementTicket } from "@/src/lib/user";
 import { inRange, requiredInt, requiredString } from "@/src/lib/validation";
 
 export async function POST(
@@ -18,14 +17,28 @@ export async function POST(
   });
   if (!tree) return notFound("tree not found");
 
-  const body = await req.json();
+  const body = (await req.json().catch(() => ({}))) as unknown;
   try {
-    const slotIndex = inRange(requiredInt(body.slotIndex, "slotIndex"), 0, 9, "slotIndex");
-    const type = requiredString(body.type, "type");
+    const slotIndex = inRange(
+      requiredInt(
+        typeof body === "object" && body !== null ? (body as Record<string, unknown>).slotIndex : undefined,
+        "slotIndex"
+      ),
+      0,
+      9,
+      "slotIndex"
+    );
+    const type = requiredString(
+      typeof body === "object" && body !== null ? (body as Record<string, unknown>).type : undefined,
+      "type"
+    );
     if (type !== "FREE_GACHA" && type !== "PAID_UPLOAD") {
       return badRequest("invalid ornament type");
     }
-    const imageUrl = requiredString(body.imageUrl, "imageUrl");
+    const imageUrl = requiredString(
+      typeof body === "object" && body !== null ? (body as Record<string, unknown>).imageUrl : undefined,
+      "imageUrl"
+    );
 
     if (tree.ornaments.some((o: { slotIndex: number }) => o.slotIndex === slotIndex)) {
       return badRequest("slot already filled");
@@ -62,7 +75,8 @@ export async function POST(
       ornament,
       tree: updatedTree,
     });
-  } catch (err: any) {
-    return badRequest(err.message ?? "invalid payload");
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "invalid payload";
+    return badRequest(message);
   }
 }
