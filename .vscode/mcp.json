@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "OpenZeppelinSolidityContracts": {
+      "type": "http",
+      "url": "https://mcp.openzeppelin.com/contracts/solidity/mcp"
+    }
+  },
+  "inputs": []
+}

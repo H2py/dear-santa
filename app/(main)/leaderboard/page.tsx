@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { apiFetch } from "@/src/lib/api-client";
 import type { TreeSummary } from "@/src/lib/types";
@@ -18,17 +19,6 @@ const backgroundClasses: Record<string, string> = {
   "10": "from-red-600 via-amber-500 to-white",
 };
 
-const shapeLabels: Record<string, string> = {
-  classic: "🎄 클래식",
-  pixel: "🟩 픽셀",
-  cyber: "⚡️ 사이버",
-};
-const shapeFilters: Record<string, string> = {
-  classic: "none",
-  pixel: "saturate(1.4)",
-  cyber: "hue-rotate(120deg) saturate(1.2)",
-};
-
 async function getLeaderboard() {
   return apiFetch<{ trees: TreeSummary[] }>(
     `${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/api/leaderboard?limit=100`,
@@ -38,11 +28,11 @@ async function getLeaderboard() {
 
 function TreeCard({ tree, rank }: { tree: TreeSummary; rank: number }) {
   const bg = backgroundClasses[tree.background] ?? "from-slate-800 via-slate-900 to-black";
-  const shape = shapeLabels[tree.shape] ?? tree.shape;
+
   return (
     <Link
       href={`/tree/${tree.id}`}
-      className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+      className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-emerald-300/60"
     >
       <div className="flex items-center justify-between text-xs text-slate-400">
         <span className="rounded-full bg-emerald-400/15 px-3 py-1 font-semibold text-emerald-200">
@@ -54,15 +44,14 @@ function TreeCard({ tree, rank }: { tree: TreeSummary; rank: number }) {
       </div>
       <div className={`h-32 w-full rounded-xl bg-gradient-to-br ${bg} p-3 text-white`}>
         <div className="relative flex h-full items-center justify-center rounded-lg border border-white/15 bg-white/10">
-          <img
+          <Image
             src="/tree.png"
             alt="tree"
+            width={80}
+            height={80}
             className="h-20 w-auto drop-shadow-[0_10px_25px_rgba(16,185,129,0.35)]"
-            style={{ filter: shapeFilters[tree.shape] ?? "none" }}
+            priority
           />
-          <div className="absolute bottom-2 right-2 rounded-full bg-black/50 px-3 py-1 text-[11px] font-semibold">
-            {shape}
-          </div>
         </div>
       </div>
       <div className="flex items-center justify-between text-sm text-slate-300">
@@ -70,6 +59,7 @@ function TreeCard({ tree, rank }: { tree: TreeSummary; rank: number }) {
         <span className="text-sm font-semibold text-amber-300">❤️ {tree.likeCount}</span>
       </div>
       <div className="text-xs text-slate-400">배경: {tree.background}</div>
+      <div className="text-xs text-emerald-300 underline underline-offset-2">상세 보기</div>
     </Link>
   );
 }
