@@ -8,6 +8,7 @@
     "prisma:generate": "prisma generate"
   },
   "dependencies": {
+    "@openzeppelin/contracts": "^5.4.0",
     "@prisma/client": "^6.19.0",
     "@supabase/ssr": "^0.5.1",
     "@supabase/supabase-js": "^2.58.5",

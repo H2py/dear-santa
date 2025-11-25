@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { Heart } from "lucide-react";
-import { type CSSProperties, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 const backgroundClasses: Record<string, string> = {
   night_sky: "from-slate-900 via-indigo-900 to-cyan-900",
@@ -20,18 +20,50 @@ const backgroundClasses: Record<string, string> = {
   "10": "bg-[url('/bg/bg-10.png')] bg-cover bg-center",
 };
 
-const SLOT_POSITIONS = [
-  { top: 78, left: 50 },
-  { top: 68, left: 48 },
-  { top: 58, left: 46 },
-  { top: 50, left: 42 },
-  { top: 76, left: 38 },
-  { top: 68, left: 36 },
-  { top: 60, left: 32 },
-  { top: 55, left: 25 },
-  { top: 65, left: 22 },
-  { top: 75, left: 18 },
+// Precomputed slots aligned to the light bulbs on tree.png (row-major: left→right, top→bottom)
+const SLOT_POSITIONS_DESKTOP = [
+  { top: 26.6, left: 40.6 },
+  { top: 31.5, left: 52.7 },
+  { top: 30.7, left: 65.7 },
+  { top: 46.9, left: 37.6 },
+  { top: 52.1, left: 48.2 },
+  { top: 56.3, left: 65.7 },
+  { top: 71.0, left: 33.9 },
+  { top: 76.7, left: 42.8 },
+  { top: 80.7, left: 53.8 },
+  { top: 81.7, left: 80.3 },
 ];
+
+
+// Slightly adjusted for small screens to keep ornaments centered on the bulbs
+const SLOT_POSITIONS_MOBILE = [
+  { top: 27.0, left: 41.5 },
+  { top: 34.0, left: 53.5 },
+  { top: 31.0, left: 66.2 },
+  { top: 46.0, left: 38.5 },
+  { top: 52.5, left: 45.0 },
+  { top: 56.5, left: 66.0 },
+  { top: 71.5, left: 34.5 },
+  { top: 77.0, left: 43.5 },
+  { top: 81.0, left: 54.5 },
+  { top: 82.0, left: 79.5 },
+];
+
+function useIsDesktop(breakpoint = 768) {
+  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+    typeof window === "undefined" ? true : window.matchMedia(`(min-width: ${breakpoint}px)`).matches
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(`(min-width: ${breakpoint}px)`);
+    const handler = (ev: MediaQueryListEvent) => setIsDesktop(ev.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [breakpoint]);
+
+  return isDesktop;
+}
 
 type Props = {
   treeId: string;
@@ -49,6 +81,7 @@ export function TreePreview({
   liked,
   ornaments,
 }: Props) {
+  const isDesktop = useIsDesktop();
   const [localLiked, setLocalLiked] = useState<boolean>(liked);
   const [localLikes, setLocalLikes] = useState<number>(likeCount);
   const [likePending, setLikePending] = useState(false);
@@ -114,7 +147,7 @@ export function TreePreview({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 w-full md:max-w-[1080px] mx-auto">
       <div
         className={`relative aspect-square w-full overflow-hidden rounded-2xl ${
           bgClass || "bg-gradient-to-br from-slate-800 via-slate-900 to-black"
@@ -127,7 +160,7 @@ export function TreePreview({
             src="/tree.png"
             alt="tree"
             fill
-            sizes="(max-width: 640px) 100vw, 50vw"
+            sizes="(max-width: 768px) 100vw, 1080px"
             className="h-full w-full object-contain drop-shadow-[0_10px_25px_rgba(16,185,129,0.35)]"
             priority
             draggable={false}
@@ -143,11 +176,12 @@ export function TreePreview({
           <span className="text-xs font-semibold">{localLikes}</span>
         </button>
         {ornaments.map((o) => {
-          const pos = SLOT_POSITIONS[o.slotIndex] ?? SLOT_POSITIONS[0];
+          const pos = (isDesktop ? SLOT_POSITIONS_DESKTOP : SLOT_POSITIONS_MOBILE)[o.slotIndex]
+            ?? (isDesktop ? SLOT_POSITIONS_DESKTOP[0] : SLOT_POSITIONS_MOBILE[0]);
           return (
             <div
               key={`${o.slotIndex}-${o.imageUrl}`}
-              className="relative absolute h-[18%] w-[18%] -translate-x-1/2 -translate-y-1/2"
+              className="absolute h-[12%] w-[12%] -translate-x-1/2 -translate-y-1/2"
               style={{ top: `${pos.top}%`, left: `${pos.left}%` }}
             >
               <Image
