@@ -5,6 +5,8 @@ import { badRequest, ok, unauthorized } from "@/src/lib/api";
 import { getTreeContract } from "@/src/lib/onchain";
 import { verifyMessage, type Address, type Hex } from "viem";
 
+console.log("TREE_ADDR", process.env.NEXT_PUBLIC_TREE_ADDRESS, "RPC", process.env.RPC_URL);
+
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return unauthorized();

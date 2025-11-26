@@ -10,6 +10,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
+import { ORNAMENT_TOKEN_IDS } from "@/src/lib/constants/gameplay";
 
 const isValidAddress = (addr?: string | null): addr is Address =>
   typeof addr === "string" && /^0x[a-fA-F0-9]{40}$/.test(addr);
@@ -82,6 +83,9 @@ export const fetchOwnedTokens = async (owner: Address) => {
   return tokens;
 };
 
+type MoralisNft = { token_id?: string; token_uri?: string };
+export type OrnamentBalance = { tokenId: string; tokenUri: string; balance: number };
+
 export const getOrnamentContract = () => {
   const contractAddress = process.env.NEXT_PUBLIC_ORNAMENT_ADDRESS;
   if (!isValidAddress(contractAddress))
@@ -120,61 +124,27 @@ export const getOrnamentContractPublic = () => {
   });
 };
 
-export const fetchOwnedOrnaments = async (owner: Address) => {
+export const fetchOwnedOrnaments = async (
+  owner: Address,
+  tokenIds: number[] = ORNAMENT_TOKEN_IDS
+): Promise<OrnamentBalance[]> => {
   if (!isValidAddress(process.env.NEXT_PUBLIC_ORNAMENT_ADDRESS)) return [];
   const contract = getOrnamentContractPublic();
-  const tokens: { tokenId: string; tokenUri: string }[] = [];
 
-  // 1) 기본: ERC721Enumerable 경로
-  try {
-    const balance = (await contract.read.balanceOf([owner])) as bigint;
-    const count = Number(balance);
-    for (let i = 0; i < count; i += 1) {
-      const tokenId = (await contract.read.tokenOfOwnerByIndex([owner, BigInt(i)])) as bigint;
-      const tokenUri = (await contract.read.tokenURI([tokenId])) as string;
-      tokens.push({ tokenId: tokenId.toString(), tokenUri });
+  // balanceOfBatch expects equal-length arrays
+  const addrs = tokenIds.map(() => owner);
+  const balances = (await contract.read.balanceOfBatch([addrs, tokenIds])) as bigint[];
+
+  const result: OrnamentBalance[] = [];
+  for (let i = 0; i < tokenIds.length; i++) {
+    const bal = Number(balances[i]);
+    if (bal > 0) {
+      const uri = (await contract.read.uri([BigInt(tokenIds[i])])) as string;
+      result.push({ tokenId: tokenIds[i].toString(), tokenUri: uri, balance: bal });
     }
-    return tokens;
-  } catch (err) {
-    // 일부 컨트랙트는 Enumerable을 구현하지 않으므로 이벤트 기반으로 재시도
-    console.warn("Enumerable fetch failed, fallback to event scan", err);
   }
-
-  // 2) Fallback: Transfer 이벤트를 스캔해 현재 소유 토큰 집합 계산
-  try {
-    const eventsTo = await contract.getEvents.Transfer({
-      fromBlock: 0n,
-      toBlock: "latest",
-      args: { to: owner },
-    });
-    const eventsFrom = await contract.getEvents.Transfer({
-      fromBlock: 0n,
-      toBlock: "latest",
-      args: { from: owner },
-    });
-
-    const owned = new Set<string>();
-    for (const ev of eventsTo) {
-      const tokenId = (ev as any).args?.tokenId as bigint | undefined;
-      if (tokenId !== undefined) owned.add(tokenId.toString());
-    }
-    for (const ev of eventsFrom) {
-      const tokenId = (ev as any).args?.tokenId as bigint | undefined;
-      if (tokenId !== undefined) owned.delete(tokenId.toString());
-    }
-
-    for (const tokenId of owned) {
-      const tokenUri = (await contract.read.tokenURI([BigInt(tokenId)])) as string;
-      tokens.push({ tokenId, tokenUri });
-    }
-  } catch (err) {
-    console.error("Event scan fetch failed", err);
-  }
-
-  return tokens;
+  return result;
 };
-
-type MoralisNft = { token_id?: string; token_uri?: string };
 
 export const fetchNftsViaMoralis = async ({
   owner,

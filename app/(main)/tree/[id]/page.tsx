@@ -74,29 +74,31 @@ export default async function TreePage({
         </span>
       </div>
 
-      <section className="mt-4 space-y-3">
-        <h1 className="text-xl font-bold">트리 #{tree.id.slice(0, 6)}</h1>
-        <TreePreview
-          treeId={tree.id}
-          background={tree.background}
-          likeCount={tree.likeCount}
-          liked={tree.likedByCurrentUser}
-          ornaments={tree.ornaments.map((o) => ({
-            slotIndex: o.slotIndex,
-            imageUrl: o.imageUrl,
-          }))}
-        />
-      </section>
+      <section className="mt-4 space-y-4">
+        <div className="space-y-1">
+          <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Tree</p>
+          <h1 className="text-xl font-bold">트리 #{tree.id.slice(0, 6)}</h1>
+        </div>
 
-      <section className="mt-6 space-y-3">
-        <TreeActions
-          treeId={tree.id}
-          ornaments={tree.ornaments.map((o) => ({ slotIndex: o.slotIndex }))}
-        />
-      </section>
+        <div className="space-y-4">
+          <TreePreview
+            treeId={tree.id}
+            background={tree.background}
+            likeCount={tree.likeCount}
+            liked={tree.likedByCurrentUser}
+            ornaments={tree.ornaments.map((o) => ({
+              slotIndex: o.slotIndex,
+              imageUrl: o.imageUrl,
+            }))}
+          />
 
-      <section className="mt-6 space-y-3">
-        <ShareActions url={shareUrl} />
+          <TreeActions
+            treeId={tree.id}
+            ornaments={tree.ornaments.map((o) => ({ slotIndex: o.slotIndex }))}
+          />
+
+          <ShareActions url={shareUrl} />
+        </div>
       </section>
     </main>
   );

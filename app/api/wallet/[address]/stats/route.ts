@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAddress, isAddress, verifyMessage } from "viem";
 import { buildWalletProofMessage } from "@/src/lib/wallet-signature";
+import { inferCharacterType, type CharacterMetrics } from "@/src/lib/character-mapping";
 
 const MORALIS_API_KEY = process.env.MORALIS_API_KEY;
 
@@ -262,10 +263,22 @@ export async function POST(
   const hottestMonth = mergeMonthBuckets(perChain.map((c) => c.monthBuckets));
   const personaLabel = derivePersonaLabel(totals, bestProfitUsd);
   const similarity = pickSimilarity(address);
+  // Heuristic metrics for character mapping (using available data; bridge/airdrop/roundtrip are defaulted).
+  const metrics: CharacterMetrics = {
+    tx_per_day_30d: totals.txCount / 30,
+    unique_protocols_90d: totals.protocolCount,
+    unique_chains_90d: perChain.filter((c) => c.txCount > 0).length,
+    bridge_txs_90d: 0,
+    airdrop_like_txs_90d: 0,
+    avg_hold_days_90d: 30, // not directly available; default to neutral hold to avoid overfitting.
+    roundtrip_trades_24h_90d: 0,
+  };
+  const character = inferCharacterType(metrics);
 
   return NextResponse.json({
     address,
     label: personaLabel,
+    character,
     chains: perChain.map((chain) => ({
       chain: chain.chain,
       txCount: chain.txCount,

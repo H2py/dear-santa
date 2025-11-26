@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { apiFetch } from "@/src/lib/api-client";
-import type { UserLite, TreeSummary, OrnamentSummary } from "@/src/lib/types";
+import type { UserLite, TreeSummary, OrnamentSummary, OrnamentBalance } from "@/src/lib/types";
 import { FakeTreeTransferPanel } from "@/src/components/fake-tree-transfer";
 
 type MeResponse = {
@@ -8,7 +8,7 @@ type MeResponse = {
   trees: TreeSummary[];
   ornaments: OrnamentSummary[];
   nfts: { tokenId: string; tokenUri: string }[];
-  ornamentNfts: { tokenId: string; tokenUri: string }[];
+  ornamentNfts: OrnamentBalance[];
 };
 
 async function getMeSafe(origin: string) {

@@ -2,14 +2,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { apiFetch } from "@/src/lib/api-client";
-import type { TreeSummary, OrnamentSummary, UserLite } from "@/src/lib/types";
+import type { TreeSummary, OrnamentSummary, UserLite, OrnamentBalance } from "@/src/lib/types";
 
 type MeResponse = {
   user: UserLite;
   trees: TreeSummary[];
   ornaments: OrnamentSummary[];
   nfts: { tokenId: string; tokenUri: string }[];
-  ornamentNfts: { tokenId: string; tokenUri: string }[];
+  ornamentNfts: OrnamentBalance[];
 };
 
 async function getMe() {
@@ -215,7 +215,7 @@ export default async function MePage() {
                       </div>
                       <div>
                         <p className="text-white font-semibold">오너먼트 #{nft.tokenId}</p>
-                        <p className="text-xs text-slate-400">ORNAMENT NFT</p>
+                        <p className="text-xs text-slate-400">ORNAMENT NFT · x{nft.balance}</p>
                       </div>
                     </div>
                     <a

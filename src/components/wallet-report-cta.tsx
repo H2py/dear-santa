@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAddress, isAddress } from "viem";
 import { buildWalletProofMessage } from "@/src/lib/wallet-signature";
+import type { CharacterProfile } from "@/src/lib/types";
 
 type ChainStat = {
   chain: string;
@@ -18,6 +19,7 @@ type ChainStat = {
 type StatsResponse = {
   address: string;
   label: string;
+  character?: CharacterProfile;
   chains: ChainStat[];
   totals: {
     txCount: number;
@@ -261,14 +263,7 @@ export function WalletReportCta() {
   };
 
   return (
-    <div className="space-y-4 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.05] to-white/[0.02] p-4">
-      <div>
-        <p className="text-xs uppercase tracking-[0.2em] text-emerald-200">연말 리포트</p>
-        <p className="text-sm text-slate-200">
-          최대 3개 지갑을 입력하고 한 번에 서명하면 합산 리포트를 만들어드려요.
-        </p>
-      </div>
-
+    <div className="space-y-3">
       <div className="space-y-2">
         {addresses.map((addr, idx) => (
           <input
@@ -289,9 +284,6 @@ export function WalletReportCta() {
         {loading ? "서명 및 수집 중..." : "전송하고 리포트 만들기"}
       </button>
 
-      <p className="text-[11px] text-slate-400">
-        * 자산 이동 없음. 주소마다 한 번씩 서명 후 모든 지갑 데이터를 합산해 리포트를 만듭니다.
-      </p>
       {error && (
         <div className="rounded-lg border border-red-300/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {error}

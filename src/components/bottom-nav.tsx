@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { HomeIcon, ListOrderedIcon, UserIcon } from "lucide-react";
+import { HomeIcon, UserIcon } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", label: "피드", icon: HomeIcon },
-  { href: "/leaderboard", label: "리더보드", icon: ListOrderedIcon },
   { href: "/me", label: "내 활동", icon: UserIcon },
 ];
 
@@ -21,7 +20,7 @@ export function BottomNav() {
   }, [router]);
 
   return (
-    <nav className="sticky bottom-0 z-30 grid w-full grid-cols-3 items-center gap-2 border-t border-white/10 bg-slate-900/90 px-2 py-3 text-sm backdrop-blur">
+    <nav className="sticky bottom-0 z-30 grid w-full grid-cols-2 items-center gap-2 border-t border-white/10 bg-slate-900/90 px-2 py-3 text-sm backdrop-blur">
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
         const active = pathname === href;
         return (
