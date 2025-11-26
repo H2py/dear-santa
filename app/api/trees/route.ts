@@ -5,8 +5,6 @@ import { badRequest, ok, unauthorized } from "@/src/lib/api";
 import { getTreeContract } from "@/src/lib/onchain";
 import { verifyMessage, type Address, type Hex } from "viem";
 
-console.log("TREE_ADDR", process.env.NEXT_PUBLIC_TREE_ADDRESS, "RPC", process.env.RPC_URL);
-
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return unauthorized();
@@ -62,8 +60,9 @@ export async function POST(req: Request) {
     const contract = getTreeContract();
     const txHash = await contract.write.mintTree([walletAddress as Address, tree.id, metadataUri]);
     return ok({ tree, txHash, metadataUri });
-  } catch (err: any) {
-    return badRequest(err?.message ?? "failed to mint");
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "failed to mint";
+    return badRequest(message);
   }
 }
 

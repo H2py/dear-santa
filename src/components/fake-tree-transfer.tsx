@@ -2,7 +2,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { isAddress, encodeFunctionData } from "viem";
+import { isAddress, encodeFunctionData, type Abi, type EIP1193Provider } from "viem";
 import ornamentAbi from "@/src/abi/ornament.json";
 
 type Owned = { tokenId: string; tokenUri: string };
@@ -14,7 +14,12 @@ type Props = {
   ownedOrnaments: Owned[];
 };
 
-export function FakeTreeTransferPanel({ ownerAddress, ornamentAddress, chainId, ownedOrnaments }: Props) {
+export function FakeTreeTransferPanel({
+  ownerAddress,
+  ornamentAddress,
+  chainId,
+  ownedOrnaments,
+}: Props) {
   const [selectedToken, setSelectedToken] = useState<string | null>(ownedOrnaments[0]?.tokenId ?? null);
   const [message, setMessage] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -38,7 +43,7 @@ export function FakeTreeTransferPanel({ ownerAddress, ornamentAddress, chainId, 
     [ownedOrnaments]
   );
 
-  const ensureChain = async (eth: any) => {
+  const ensureChain = async (eth: EIP1193Provider) => {
     if (!chainId) return;
     const current = await eth.request({ method: "eth_chainId" });
     const currentDec = Number(current);
@@ -66,7 +71,7 @@ export function FakeTreeTransferPanel({ ownerAddress, ornamentAddress, chainId, 
       setMessage("오너먼트 컨트랙트 주소가 올바르지 않습니다.");
       return;
     }
-    const eth = (window as any).ethereum;
+    const eth = (window as typeof window & { ethereum?: EIP1193Provider }).ethereum;
     if (!eth) {
       setMessage("지갑이 감지되지 않았습니다 (MetaMask 등 설치 필요)");
       return;
@@ -75,24 +80,27 @@ export function FakeTreeTransferPanel({ ownerAddress, ornamentAddress, chainId, 
     setLoading(true);
     try {
       await ensureChain(eth);
-      const accounts: string[] = await eth.request({ method: "eth_requestAccounts" });
+      const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
       const from = accounts?.[0];
       if (!from) throw new Error("지갑 주소를 가져올 수 없습니다.");
 
+      const abi = (ornamentAbi as unknown as { abi: Abi }).abi;
       const data = encodeFunctionData({
-        abi: ornamentAbi as any,
+        abi,
         functionName: "safeTransferFrom",
         args: [from as `0x${string}`, ownerAddress as `0x${string}`, BigInt(selectedToken)],
       });
 
-      const hash: string = await eth.request({
+      const txParams = [{ from, to: ornamentAddress as `0x${string}`, data }];
+      const hash = (await eth.request({
         method: "eth_sendTransaction",
-        params: [{ from, to: ornamentAddress, data }],
-      });
+        params: txParams as unknown as [Record<string, string>],
+      })) as string;
       setTxHash(hash);
       setMessage("전송 요청을 보냈습니다. Etherscan에서 확인하세요.");
-    } catch (err: any) {
-      setMessage(err?.message ?? "전송에 실패했습니다.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "전송에 실패했습니다.";
+      setMessage(msg);
     } finally {
       setLoading(false);
     }
