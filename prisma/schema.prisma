@@ -16,6 +16,8 @@ model User {
   inviteCode     String?  @unique
   gachaTickets   Int      @default(3)
   totalLikesUsed Int      @default(0)
+  ornamentBalance Int     @default(0)
+  lastOrnamentAttachedAt DateTime?
 
   trees            Tree[]
   ornaments        Ornament[]
@@ -27,6 +29,8 @@ model User {
   payments         Payment[]
   ornamentAudits   OrnamentAudit[]
   rewardClaims     RewardClaim[]
+  characterReports CharacterReport[]
+  ornamentMintQueues OrnamentMintQueue[]
 }
 
 model Tree {
@@ -40,6 +44,12 @@ model Tree {
   completedAt DateTime?
   createdAt   DateTime   @default(now())
   shareCode   String?    @unique
+  metadataUri String?
+  characterReportId String?
+  characterReport   CharacterReport? @relation(fields: [characterReportId], references: [id])
+  sloganId     Int?
+  sloganCustom String?
+  pinnedOrnamentIds Json?
 
   ornaments Ornament[]
   likes     Like[]
@@ -62,6 +72,8 @@ model Ornament {
   imageUrl  String
   slotIndex Int
   createdAt DateTime     @default(now())
+  tagId     Int?
+  tagText   String?
 
   audits OrnamentAudit[]
 
@@ -172,5 +184,47 @@ enum OrnamentAuditType {
 enum ClaimStatus {
   PENDING
   SUCCESS
+  FAILED
+}
+
+model CharacterReport {
+  id            String   @id @default(cuid())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  walletAddress String
+  characterType String
+  emoji         String?
+  label         String?
+  description   String?
+  metrics       Json?
+  issuedYear    Int?
+  createdAt     DateTime @default(now())
+
+  trees Tree[]
+}
+
+model OrnamentMintQueue {
+  id           String               @id @default(cuid())
+  userId       String
+  walletAddress String
+  tokenId      Int
+  amount       Int                  @default(1)
+  status       OrnamentMintStatus   @default(PENDING)
+  error        String?
+  txHash       String?
+  ornamentId   String?
+  imageUrl     String?
+  metadataUri  String?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  processedAt  DateTime?
+
+  user         User                 @relation(fields: [userId], references: [id])
+}
+
+enum OrnamentMintStatus {
+  PENDING
+  PROCESSING
+  SENT
   FAILED
 }

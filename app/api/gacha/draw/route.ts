@@ -3,7 +3,7 @@ import { badRequest, ok, unauthorized } from "@/src/lib/api";
 import { prisma } from "@/src/lib/prisma";
 import { getCurrentUser } from "@/src/lib/auth";
 import { decrementTicket, incrementTickets } from "@/src/lib/user";
-import { getOrnamentContract } from "@/src/lib/onchain";
+import { ORNAMENT_TOKEN_IDS } from "@/src/lib/constants/gameplay";
 import { verifyMessage, type Address, type Hex } from "viem";
 
 const ORNAMENT_IMAGES = Array.from({ length: 17 }, (_, i) => `/ornaments/${i + 1}.png`);
@@ -49,26 +49,23 @@ export async function POST(req: Request) {
 
   await decrementTicket(user.id);
 
-  const imageUrl = ORNAMENT_IMAGES[Math.floor(Math.random() * ORNAMENT_IMAGES.length)];
+  const idx = Math.floor(Math.random() * ORNAMENT_TOKEN_IDS.length);
+  const tokenId = ORNAMENT_TOKEN_IDS[idx];
+  const imageUrl = ORNAMENT_IMAGES[idx];
   const ornamentId = `orn-${randomUUID()}`;
-  const metadata = {
-    name: `Zeta Ornament ${ornamentId.slice(0, 6)}`,
-    description: "Zeta Xmas Ornament",
-    image: imageUrl,
-    attributes: [
-      { trait_type: "Type", value: "FREE_GACHA" },
-      { trait_type: "OrnamentId", value: ornamentId },
-      { trait_type: "OwnerSession", value: user.id },
-    ],
-  };
-  const metadataUri = `data:application/json;utf8,${encodeURIComponent(JSON.stringify(metadata))}`;
 
-  const contract = getOrnamentContract();
-  const txHash = await contract.write.mintOrnament([
-    walletAddress as Address,
-    ornamentId,
-    metadataUri,
-  ]);
+  // 온체인 민트 대신 큐 적립 (옵션 B: 배치 mintBatch)
+  await prisma.ornamentMintQueue.create({
+    data: {
+      userId: user.id,
+      walletAddress,
+      tokenId,
+      amount: 1,
+      status: "PENDING",
+      ornamentId,
+      imageUrl,
+    },
+  });
 
   return ok({
     ornaments: [
@@ -77,8 +74,9 @@ export async function POST(req: Request) {
         type: "FREE_GACHA",
         imageUrl,
         ornamentId,
-        txHash,
-        metadataUri,
+        txHash: null,
+        metadataUri: null,
+        tokenId,
       },
     ],
     remainingTickets: tickets - 1,
