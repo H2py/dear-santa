@@ -5,7 +5,6 @@ import type { TreeDetail, TreeSummary } from "@/src/lib/types";
 import { TreePreview } from "@/src/components/tree-preview";
 import { TreeActions } from "@/src/components/tree-actions";
 import { ShareActions } from "@/src/components/share-actions";
-import { WalletReportCta } from "@/src/components/wallet-report-cta";
 
 async function ensureSession(origin: string) {
   try {
@@ -66,28 +65,9 @@ export default async function Home({
         </Link>
       </div>
 
-      <section id="letter" className="mt-6 space-y-4">
-        <div className="space-y-4 rounded-3xl bg-gradient-to-br from-emerald-500/25 via-cyan-500/15 to-slate-900 p-5 shadow-lg shadow-emerald-500/20">
-          <div className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.25em] text-emerald-200">Onchain Letter</p>
-            <h1 className="text-2xl font-bold leading-tight text-white">
-              산타에게 내 온체인 편지 받기
-            </h1>
-            <p className="text-sm text-emerald-100">
-              한 번의 서명으로 올해 온체인 투자 패턴을 받아보세요.
-            </p>
-          </div>
-            <WalletReportCta />
-          <p className="text-[11px] text-emerald-100/70">
-            * 온체인 데이터만 읽어옵니다. 자산 이동 없음. 서명 후 자동으로 리포트 페이지로 이동합니다. 지난 편지는 리포트 페이지에서 다시 볼 수 있어요.
-          </p>
-        </div>
-      </section>
-
-      <section id="tree-zone" className="mt-8 space-y-4">
+      <section id="tree-zone" className="mt-6 space-y-4">
         <div className="flex flex-col gap-2">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Next Step</p>
             <h2 className="text-xl font-bold text-white">트리 꾸미고 오너먼트 주고받기</h2>
             <p className="text-sm text-slate-300">오늘의 무료 오너먼트를 쓰고, 친구와 트리를 채워보세요.</p>
           </div>
@@ -133,9 +113,9 @@ export default async function Home({
           <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
             <div className="space-y-1">
               <p className="text-xs uppercase tracking-[0.25em] text-emerald-200">Start</p>
-              <h3 className="text-lg font-semibold text-white">내 트리에 편지를 걸어보세요</h3>
+              <h3 className="text-lg font-semibold text-white">내 트리를 만들어보세요</h3>
               <p className="text-sm text-slate-300">
-                편지를 받은 뒤 트리를 만들고 친구에게 오너먼트를 부탁하세요. 출석 체크로 매일 1개씩 무료 오너먼트를 드립니다.
+                트리를 만들고 친구에게 오너먼트를 부탁하세요. 출석 체크로 매일 1개씩 무료 오너먼트를 드립니다.
               </p>
             </div>
             <Link

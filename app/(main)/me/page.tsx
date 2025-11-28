@@ -73,6 +73,14 @@ export default async function MePage() {
             <p className="text-sm text-slate-300">
               지갑: {hasWallet ? data.user.walletAddress : "연결되지 않음"}
             </p>
+            <form action="/api/auth/logout?redirect=/" method="post" className="pt-3">
+              <button
+                type="submit"
+                className="w-full rounded-xl border border-white/20 bg-white/[0.08] px-4 py-3 text-sm font-semibold text-white transition hover:-translate-y-[1px] hover:shadow-lg active:translate-y-[1px]"
+              >
+                세션 로그아웃 (홈으로 이동)
+              </button>
+            </form>
           </section>
 
           <section className="mt-6 space-y-2">
