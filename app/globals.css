@@ -13,3 +13,41 @@ body {
   color: #e5e7eb;
   min-height: 100vh;
 }
+
+/* 슬롯 휠 내부에서의 휠 버블링 방지 보조 클래스 (필요 시) */
+.no-scroll {
+  overscroll-behavior: contain;
+}
+
+@keyframes modal-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-pop {
+  animation: modal-pop 180ms ease-out forwards;
+}
+
+/* 편지 아이콘: 위로 살짝 올라갔다가 아래로 부드럽게 떨어지는 모션 */
+@keyframes letter-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-4px);
+  }
+  65% {
+    transform: translateY(4px);
+  }
+}
+
+.letter-bounce {
+  animation: letter-bounce 1.5s ease-out forwards;
+}

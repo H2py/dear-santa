@@ -1,10 +1,19 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+// cspell:ignore gacha GACHA giftbox
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { TreePreview } from "@/src/components/tree-preview";
+import { CreateTreeModal } from "@/src/components/create-tree-modal";
+import { ProfileModal } from "@/src/components/profile-modal";
+import { LeaderboardModal } from "@/src/components/leaderboard-modal";
+import {
+  useVolrModal,
+  useVolr,
+  PasskeyEnrollView,
+} from "@volr/react-ui";
 import type { TreeDetail } from "@/src/lib/types";
 
 type Props = {
@@ -13,35 +22,274 @@ type Props = {
 
 export function HomeHero({ primaryTree }: Props) {
   const router = useRouter();
+  const { open: openVolrModal, close: closeVolrModal } = useVolrModal();
+  const { user, evm, evmAddress, isLoggedIn } = useVolr();
   const [showGacha, setShowGacha] = useState(false);
   const [showAttendance, setShowAttendance] = useState(false);
   const [showQuest, setShowQuest] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showLetter, setShowLetter] = useState(false);
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [showShareSheet, setShowShareSheet] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showPasskeyEnroll, setShowPasskeyEnroll] = useState(false);
+  useEffect(() => {
+    // 로그인 완료 시 Volr 기본 모달이 켜져 있다면 닫기
+    if (user) {
+      closeVolrModal?.();
+    }
+  }, [user, closeVolrModal]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [drawn, setDrawn] = useState<{ tempId: string; imageUrl: string } | null>(null);
+  const [drawn, setDrawn] = useState<{
+    tempId: string;
+    imageUrl: string;
+  } | null>(null);
+  const [shareLink, setShareLink] = useState("");
   const [ornaments, setOrnaments] = useState(
-    () => primaryTree?.ornaments ?? ([] as { slotIndex: number; imageUrl: string }[])
+    () =>
+      primaryTree?.ornaments ??
+      ([] as { slotIndex: number; imageUrl: string; ownerId: string }[])
   );
+  const [inventory, setInventory] = useState<
+    { tokenId: string; imageUrl: string; balance: number }[]
+  >([]);
+  useEffect(() => {
+    if (user && user.keyStorageType !== "passkey") {
+      setShowPasskeyEnroll(true);
+    }
+  }, [user]);
+
   useEffect(() => {
     setOrnaments(primaryTree?.ornaments ?? []);
   }, [primaryTree]);
-  const ownerLabel =
-    primaryTree?.owner?.walletAddress?.slice(0, 6) ??
-    primaryTree?.owner?.id?.slice(0, 6) ??
-    "나";
+  useEffect(() => {
+    if (primaryTree && typeof window !== "undefined") {
+      setShareLink(`${window.location.origin}/tree/${primaryTree.id}`);
+    }
+  }, [primaryTree]);
+
+  const extractImage = (tokenUri?: string) => {
+    if (!tokenUri) return null;
+    if (tokenUri.startsWith("data:application/json")) {
+      const payload = tokenUri.split(",")?.slice(1).join(",") ?? "";
+      try {
+        const json = tokenUri.includes(";base64,")
+          ? JSON.parse(Buffer.from(payload, "base64").toString("utf8"))
+          : JSON.parse(decodeURIComponent(payload));
+        const image = typeof json.image === "string" ? json.image : null;
+        return image;
+      } catch {
+        return null;
+      }
+    }
+    return tokenUri;
+  };
+  const meFetchTsRef = useRef(0);
+  const meCacheRef = useRef<any>(null);
+  const meFetchedRef = useRef(false);
+
+  const fetchMeOnce = useCallback(
+    async (force = false) => {
+      const now = Date.now();
+      if (!force) {
+        if (meFetchedRef.current && meCacheRef.current) return meCacheRef.current;
+        if (now - meFetchTsRef.current < 5000 && meCacheRef.current) return meCacheRef.current;
+      }
+      meFetchTsRef.current = now;
+      const res = await fetch("/api/me", { cache: "no-store" });
+      if (!res.ok) throw new Error("세션 정보를 불러오지 못했습니다.");
+      const data = await res.json();
+      meCacheRef.current = data;
+      meFetchedRef.current = true;
+      return data;
+    },
+    []
+  );
+
+  useEffect(() => {
+    fetchMeOnce().then((data) => {
+      if (!data) return;
+      const list = (data?.ornamentNfts ?? []).map(
+        (n: { tokenId: string; tokenUri: string; balance: number }) => ({
+          tokenId: n.tokenId,
+          imageUrl: extractImage(n.tokenUri) ?? "",
+          balance: n.balance ?? 0,
+        })
+      );
+      setInventory(
+        list.filter(
+          (n: { tokenId: string; imageUrl: string; balance: number }) =>
+            n.imageUrl && n.balance > 0
+        )
+      );
+    }).catch(() => {});
+  }, [primaryTree, fetchMeOnce]);
   const ornamentCount = ornaments.length;
+  const showStats = !!primaryTree;
+  const letterCharacter = primaryTree?.character ?? null;
+  const [letterPulse, setLetterPulse] = useState(false);
+  const [showSantaReading, setShowSantaReading] = useState(true);
+  const [showProfile, setShowProfile] = useState(false);
+  const [profileData, setProfileData] = useState<null | {
+    user: {
+      id: string;
+      walletAddress?: string | null;
+      gachaTickets: number;
+      totalLikesUsed: number;
+    };
+    trees: { id: string; likeCount: number; status: string }[];
+    ornaments: {
+      id: string;
+      slotIndex: number;
+      type: string;
+      imageUrl: string;
+      treeId: string;
+    }[];
+    ornamentNfts: { tokenId: string; tokenUri: string; balance: number }[];
+    nfts: { tokenId: string; tokenUri: string }[];
+  }>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileLikesUsed, setProfileLikesUsed] = useState<number | null>(null);
+  const profileFetchTsRef = useRef(0);
+  useEffect(() => {
+    if (!showProfile || profileData || profileLoading) return;
+    const now = Date.now();
+    if (now - profileFetchTsRef.current < 5000) return; // 5초 쿨다운
+    profileFetchTsRef.current = now;
+    const loadProfile = async () => {
+      try {
+        setProfileLoading(true);
+        setProfileError(null);
+        const data = await fetchMeOnce(true);
+        if (!data) throw new Error("세션 정보를 불러오지 못했습니다.");
+        setProfileData(data);
+        setProfileLikesUsed(data?.user?.totalLikesUsed ?? null);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "로드 실패";
+        setProfileError(msg);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+    void loadProfile();
+  }, [showProfile, profileData, profileLoading]);
+  const points = useMemo(() => {
+    if (!primaryTree) return 0;
+    const totalSlots = 10;
+    const allOthers =
+      ornaments.length >= totalSlots &&
+      ornaments.every((o) => o.ownerId && o.ownerId !== primaryTree.owner.id);
+    const base = allOthers ? 40 : primaryTree.status === "COMPLETED" ? 20 : 0;
+    const attach = ornaments.reduce(
+      (sum, o) => sum + (o.ownerId === primaryTree.owner.id ? 1 : 2),
+      0
+    );
+    return base + attach;
+  }, [ornaments, primaryTree]);
 
   const emptySlots = useMemo(() => {
     const filled = new Set(ornaments.map((o) => o.slotIndex));
-    return Array.from({ length: 10 }, (_, i) => i).filter((i) => !filled.has(i));
+    return Array.from({ length: 10 }, (_, i) => i).filter(
+      (i) => !filled.has(i)
+    );
   }, [ornaments]);
 
-  const [slot, setSlot] = useState<number | null>(null);
-  const selectedSlot = slot ?? emptySlots[0] ?? null;
+  const orderedSlots = useMemo(
+    () => [...emptySlots].sort((a, b) => b - a),
+    [emptySlots]
+  );
+
+  const [likeCount, setLikeCount] = useState(primaryTree?.likeCount ?? 0);
+  const [liked, setLiked] = useState(primaryTree?.likedByCurrentUser ?? false);
+  useEffect(() => {
+    setLikeCount(primaryTree?.likeCount ?? 0);
+    setLiked(primaryTree?.likedByCurrentUser ?? false);
+  }, [primaryTree]);
+
+  // 트리 완성 시 축하 모달 1회 표시 (트리별로 로컬 저장)
+  const [completeReady, setCompleteReady] = useState(false);
+  const [completeShown, setCompleteShown] = useState(false);
+  useEffect(() => {
+    if (!primaryTree) {
+      setCompleteReady(false);
+      setCompleteShown(false);
+      setShowCompleteModal(false);
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const seen = localStorage.getItem(`completeSeen:${primaryTree.id}`);
+      if (seen) {
+        setCompleteShown(true);
+      } else {
+        setCompleteShown(false);
+      }
+      setCompleteReady(true);
+    }
+  }, [primaryTree]);
+
+  useEffect(() => {
+    if (!primaryTree || !completeReady) return;
+    if (emptySlots.length === 0 && !completeShown) {
+      setShowCompleteModal(true);
+      setCompleteShown(true);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`completeSeen:${primaryTree.id}`, "1");
+      }
+    }
+  }, [primaryTree, emptySlots, completeShown, completeReady]);
+
+  // 편지 알림: 아직 열지 않았다면 1.5초 튕김을 최대 5회만 실행 (겹치지 않게 간격 둠)
+  useEffect(() => {
+    if (!letterCharacter || showLetter) return;
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
+    let cancelled = false;
+
+    const runPulse = (count: number) => {
+      if (cancelled || count >= 5) return;
+      setLetterPulse(true);
+      timers.push(
+        setTimeout(() => {
+          setLetterPulse(false);
+        }, 1500)
+      );
+      if (count < 4) {
+        // 다음 펄스를 약간의 간격을 두고 예약 (조금 더 자연스럽게)
+        timers.push(
+          setTimeout(() => {
+            runPulse(count + 1);
+          }, 1700)
+        );
+      }
+    };
+
+    runPulse(0);
+
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+      setLetterPulse(false);
+    };
+  }, [letterCharacter, showLetter]);
+
+  const initialSlot = orderedSlots[orderedSlots.length - 1] ?? null;
+  const [slot, setSlot] = useState<number | null>(initialSlot);
+  const slotWheelTsRef = useRef(0);
+  const slotTouchStartRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (orderedSlots.length === 0) {
+      setSlot(null);
+      return;
+    }
+    if (slot === null || !orderedSlots.includes(slot)) {
+      setSlot(orderedSlots[orderedSlots.length - 1]);
+    }
+  }, [orderedSlots, slot]);
+  const selectedSlot = slot ?? orderedSlots[orderedSlots.length - 1] ?? null;
   const [attendance, setAttendance] = useState(() =>
     Array.from({ length: 21 }, (_, i) => ({ day: i + 1, checked: i < 2 }))
   );
-  const [touchStartY, setTouchStartY] = useState<number | null>(null);
   const quests = [
     {
       id: "zeta-quiz",
@@ -63,15 +311,6 @@ export function HomeHero({ primaryTree }: Props) {
     },
   ];
 
-  const playBoxSound = () => {
-    try {
-      const audio = new Audio("/box-click.mp3");
-      void audio.play();
-    } catch {
-      // ignore sound errors
-    }
-  };
-
   const handleAttendanceCheck = () => {
     setAttendance((prev) => {
       const idx = prev.findIndex((d) => !d.checked);
@@ -91,68 +330,26 @@ export function HomeHero({ primaryTree }: Props) {
     return true;
   };
 
-  const moveSlot = (delta: number) => {
-    if (emptySlots.length === 0) return;
-    const currentIndex = selectedSlot !== null ? emptySlots.indexOf(selectedSlot) : 0;
-    const nextIndex = Math.min(Math.max(currentIndex + delta, 0), emptySlots.length - 1);
-    setSlot(emptySlots[nextIndex]);
-  };
-
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (Math.abs(e.deltaY) < 5) return;
-    moveSlot(e.deltaY > 0 ? 1 : -1);
-  };
-
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    setTouchStartY(e.touches[0]?.clientY ?? null);
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (touchStartY === null) return;
-    const endY = e.changedTouches[0]?.clientY ?? touchStartY;
-    const diff = endY - touchStartY;
-    if (Math.abs(diff) > 25) {
-      moveSlot(diff > 0 ? 1 : -1);
-    }
-    setTouchStartY(null);
-  };
-
-  const requestWalletSignature = async () => {
-    type EthereumProvider = {
-      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-    };
-    const eth = (window as typeof window & { ethereum?: EthereumProvider }).ethereum;
-    if (!eth) throw new Error("지갑이 감지되지 않았습니다 (MetaMask 등 설치 필요)");
-
-    const accounts = await eth.request({ method: "eth_requestAccounts" });
-    if (!Array.isArray(accounts) || typeof accounts[0] !== "string") {
-      throw new Error("지갑 주소를 가져올 수 없습니다.");
-    }
-    const account = accounts[0];
-    const signedMessage = `Zeta Ornament Gacha (${Date.now()})`;
-    const signatureResult = await eth.request({
-      method: "personal_sign",
-      params: [signedMessage, account],
-    });
-    if (typeof signatureResult !== "string") {
-      throw new Error("지갑 서명에 실패했습니다.");
-    }
-    const signature = signatureResult;
-    return { account, signature, signedMessage };
-  };
-
   const handleDraw = async () => {
     if (!primaryTree) return;
     setMessage(null);
     setLoading(true);
     try {
-      playBoxSound();
-      const { account, signature, signedMessage } = await requestWalletSignature();
+      if (!isLoggedIn || !evm || !evmAddress) {
+        openVolrModal?.();
+        throw new Error("로그인 후 다시 시도해주세요.");
+      }
+      const signMessage = evm(5115)?.signMessage;
+      if (!signMessage) {
+        throw new Error("서명 모듈을 초기화하지 못했습니다.");
+      }
+      const signedMessage = `Zeta Ornament Gacha (${Date.now()})`;
+      const signature = await signMessage({ message: signedMessage });
       const res = await fetch("/api/gacha/draw", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          walletAddress: account,
+          walletAddress: evmAddress,
           signature,
           signedMessage,
         }),
@@ -184,31 +381,99 @@ export function HomeHero({ primaryTree }: Props) {
     }
     if (!ensureSlot()) return;
     setLoading(true);
-    setMessage(null);
+    setMessage("트리에 오너먼트를 다는 중입니다...");
+
+    // 낙관적 업데이트 준비
+    const prevOrnaments = ornaments;
+    const prevInventory = inventory;
+    const prevDrawn = drawn;
+    const optimistic = {
+      slotIndex: selectedSlot,
+      imageUrl: drawn.imageUrl,
+      ownerId: primaryTree.owner.id,
+    };
+
+    // 즉시 UI 반영
+    setOrnaments([...ornaments, optimistic]);
+    setInventory((prev) => {
+      const next = prev.map((n) =>
+        drawn.tempId?.startsWith("inv-") && drawn.tempId.slice(4) === n.tokenId
+          ? { ...n, balance: n.balance - 1 }
+          : n
+      );
+      return next.filter((n) => n.balance > 0);
+    });
+    setDrawn(null);
+    setShowGacha(false);
+
     try {
       const res = await fetch(`/api/trees/${primaryTree.id}/ornaments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotIndex: selectedSlot, type: "FREE_GACHA", imageUrl: drawn.imageUrl }),
+        body: JSON.stringify({
+          slotIndex: selectedSlot,
+          type: "FREE_GACHA",
+          imageUrl: drawn.imageUrl,
+        }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error((data as { error?: string })?.error ?? "부착에 실패했습니다.");
+      if (!res.ok)
+        throw new Error(
+          (data as { error?: string })?.error ?? "부착에 실패했습니다."
+        );
       setMessage("트리에 오너먼트를 달았습니다!");
-      setOrnaments((prev) => [...prev, { slotIndex: selectedSlot, imageUrl: drawn.imageUrl }]);
-      setDrawn(null);
-      setShowGacha(false);
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "오류가 발생했습니다.";
       setMessage(msg);
+      // 롤백
+      setOrnaments(prevOrnaments);
+      setInventory(prevInventory);
+      setDrawn(prevDrawn);
+      setShowGacha(true);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleToggleLike = async () => {
+    if (!primaryTree) return;
+    const next = !liked;
+    setLiked(next);
+    setLikeCount((c) => Math.max(0, c + (next ? 1 : -1)));
+    try {
+      const res = await fetch(`/api/trees/${primaryTree.id}/like`, {
+        method: next ? "POST" : "DELETE",
+      });
+      if (!res.ok) {
+        throw new Error("좋아요 처리에 실패했습니다.");
+      }
+      const data = await res.json().catch(() => ({}));
+      if (typeof data.likeCount === "number") {
+        setLikeCount(data.likeCount);
+      }
+      if (typeof data.likedByCurrentUser === "boolean") {
+        setLiked(data.likedByCurrentUser);
+      }
+    } catch {
+      const msg = err instanceof Error ? err.message : "";
+      // 이미 반영된 상태라면 롤백 없이 유지
+      if (
+        msg.includes("already liked") ||
+        msg.includes("not liked") ||
+        msg.toLowerCase().includes("p2002")
+      ) {
+        return;
+      }
+      setLiked((v) => !v);
+      setLikeCount((c) => Math.max(0, c + (next ? -1 : 1)));
+      setMessage("좋아요에 실패했습니다.");
+    }
+  };
+
   return (
     <div
-      className="relative overflow-hidden rounded-[32px] p-4 text-white shadow-xl"
+      className="relative min-h-[900px] overflow-hidden rounded-[32px] p-3 text-white shadow-xl"
       style={{
         backgroundImage: "url(/christmas-background.png)",
         backgroundSize: "cover",
@@ -231,70 +496,141 @@ export function HomeHero({ primaryTree }: Props) {
       </div>
 
       {/* 상단바 */}
-      <div className="relative z-10 flex items-center justify-between">
-        <Link
-          href="/me"
+      <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+        <button
+          type="button"
+          onClick={() => setShowProfile(true)}
           className="flex items-center gap-2 rounded-full bg-black/20 px-3 py-2 text-sm font-semibold text-white shadow backdrop-blur"
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-full text-white font-bold shadow">
             👤
           </span>
-          <div className="leading-tight">
-            <p className="text-[11px] opacity-80">프로필</p>
-            <p className="text-sm font-semibold">내 정보</p>
-          </div>
-        </Link>
+          <span className="text-sm font-semibold leading-tight">내 정보</span>
+        </button>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowGacha(true)}
-            className="flex items-center gap-3 rounded-full bg-white/95 px-4 py-3 text-base text-black font-semibold shadow-xl hover:-translate-y-[1px] hover:shadow-2xl transition"
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-300 text-slate-900 text-lg font-bold shadow">
-              🎁
-            </span>
-            <div className="flex flex-row leading-tight text-left">
-              <span className="text-sm font-bold font-sans text-slate-900 mr-1">남은 횟수 :</span>
-              <span className="text-sm font-bold font-sans text-slate-900">{ornamentCount}</span>
+        {showStats && (
+          <div className="flex items-center gap-2">
+            <div className="flex h-12 min-w-[128px] items-center justify-between gap-2 rounded-full bg-white/95 px-3 text-sm font-semibold text-amber-800 shadow-xl hover:-translate-y-[1px] hover:shadow-2xl transition">
+              <span className="text-xs font-bold text-amber-800">포인트</span>
+              <span className="text-base font-extrabold text-amber-700">
+                {points}
+              </span>
             </div>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => setShowGacha(true)}
+              className="flex h-12 min-w-[128px] items-center justify-between gap-2 rounded-full bg-white/95 px-3 text-sm text-black font-semibold shadow-xl hover:-translate-y-[1px] hover:shadow-2xl transition"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-300 text-slate-900 text-base font-bold shadow">
+                🎁
+              </span>
+              <div className="flex flex-row items-center gap-1 leading-tight text-left">
+                <span className="text-xs font-bold text-slate-900">
+                  남은 횟수
+                </span>
+                <span className="text-sm font-extrabold text-slate-900">
+                  {ornamentCount}
+                </span>
+              </div>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 타이틀 */}
       <div className="relative z-10 mt-4 text-center">
-        <p className="font-christmas text-lg font-semibold tracking-wide text-white/90">{ownerLabel}의 트리</p>
         <h1 className="font-christmas text-6xl font-extrabold uppercase tracking-[0.14em] text-transparent bg-gradient-to-b from-white via-white to-purple-200 bg-clip-text drop-shadow-[0_12px_16px_rgba(120,0,160,0.35)]">
-          Xmas Tree
+          Zmas Tree
         </h1>
       </div>
+
+      {/* 트리가 없을 때: 타이틀과 안내 사이 산타 카드 (모바일 스케일 다운) */}
+      {!primaryTree && (
+        <div className="relative z-10 mx-auto mt-2 mb-2 flex max-w-3xl flex-col items-center justify-center gap-3 rounded-3xl bg-white/12 p-4 shadow-inner">
+          <div className="relative aspect-[2/3] w-full max-w-[320px] overflow-hidden rounded-2xl bg-white/10 shadow-lg">
+            <Image
+              src={
+                showSantaReading
+                  ? "/home/santa-reading.png"
+                  : "/home/santa-welcome.png"
+              }
+              alt="산타"
+              fill
+              className="object-contain"
+              sizes="(min-width: 768px) 320px, 80vw"
+            />
+
+            {/* ⬇️ 산타 그림에 겹쳐지는 말풍선 영역 */}
+            <div className="absolute inset-x-0 bottom-0">
+                {!showSantaReading && (
+                  <div className="mx-3 mb-3 rounded-xl bg-[#b0b1aa]/70 px-3 py-2 text-center text-sm font-semibold text-slate-900 shadow-inner whitespace-pre-line">
+                  선물을 받으러 왔구나!{"\n"} 
+                  트리를 만들고 잠에 들면, 올 한 해 어떤 마음으로 지냈는지 살펴보고 선물을 준비해두마.
+                  </div>)
+                }
+              </div>
+          </div>
+
+          {/* 이 부분은 그대로 유지 */}
+          <div className="w-full px-3 pt-8 text-center text-sm font-semibold text-white shadow-inner">
+            {showSantaReading
+              ? "산타가 착한 아이 리스트를 읽고 있어요! 선물을 받을 수 있는지 함께 확인해볼까요?"
+              : "트리를 만들고 산타의 편지를 확인해보세요!"}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (showSantaReading) {
+                setShowSantaReading(false);
+              } else {
+                if (isLoggedIn) {
+                  setShowCreateModal(true);
+                } else {
+                  openVolrModal();
+                }
+              }
+            }}
+            className="w-full rounded-full bg-emerald-300 px-5 py-4 text-base font-bold text-emerald-900 shadow transition hover:-translate-y-[1px] hover:shadow-lg active:translate-y-[1px]"
+          >
+            {showSantaReading ? "산타에게 말 걸기" : "트리 만들기"}
+          </button>
+        </div>
+      )}
 
       {/* 메인 트리 영역 */}
       {primaryTree ? (
         <div className="relative z-10 mt-4 flex flex-col items-center gap-4">
-          {/* 오른쪽 플로팅 아이콘: 출석체크 / 퀘스트 */}
-          <div className="absolute right-0 top-32 z-20 flex flex-col gap-3 pr-1">
-            <button
-              type="button"
-              onClick={() => setShowAttendance(true)}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-lg text-emerald-600"
-              aria-label="출석체크"
-            >
-              📅
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowQuest(true)}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-lg text-purple-700"
-              aria-label="퀘스트"
-            >
-              📜
-            </button>
-          </div>
-
           <div className="relative w-full max-w-[360px]">
-            <div className="rounded-[32px] bg-white/18 p-5 shadow-xl shadow-purple-900/30 backdrop-blur">
+            {/* 트리 카드 옆 플로팅 액션 (컨테이너 안쪽, 배경 안에서 살짝 오른쪽) */}
+            <div className="absolute right-[-10px] top-1/2 z-30 flex -translate-y-1/2 flex-col gap-6 sm:right-[-14px] md:right-[-218px]">
+              <button
+                type="button"
+                onClick={() => setShowAttendance(true)}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-white/95 text-emerald-700 shadow-xl shadow-black/20 transition hover:-translate-y-[2px] hover:shadow-2xl active:translate-y-[1px]"
+                aria-label="출석체크"
+              >
+                📅
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowQuest(true)}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-white/95 text-purple-700 shadow-xl shadow-black/20 transition hover:-translate-y-[2px] hover:shadow-2xl active:translate-y-[1px]"
+                aria-label="퀘스트"
+              >
+                📜
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLeaderboard(true)}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-white/95 text-amber-600 shadow-xl shadow-black/20 transition hover:-translate-y-[2px] hover:shadow-2xl active:translate-y-[1px]"
+                aria-label="리더보드"
+              >
+                🏆
+              </button>
+            </div>
+            <div className="relative rounded-[32px] bg-white/18 p-4 shadow-xl shadow-purple-900/30 backdrop-blur">
+              {/* 공유 시트는 카드 외부에서 토글 */}
               <TreePreview
                 treeId={primaryTree.id}
                 background={primaryTree.background}
@@ -305,73 +641,261 @@ export function HomeHero({ primaryTree }: Props) {
                   slotIndex: o.slotIndex,
                   imageUrl: o.imageUrl,
                 }))}
+                selectedSlot={selectedSlot ?? undefined}
               />
+              <div className="mt-3 flex items-center gap-4 text-white">
+                <button
+                  type="button"
+                  onClick={handleToggleLike}
+                  className="flex h-10 w-10 items-center justify-center rounded-full transition hover:scale-105 active:scale-95"
+                  aria-label="좋아요"
+                >
+                  {liked ? (
+                    <span className="text-2xl text-red-500">❤️</span>
+                  ) : (
+                    <span className="text-2xl text-white">🤍</span>
+                  )}
+                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowShareSheet((v) => !v)}
+                    className="flex h-10 w-10 items-center justify-center rounded-full transition hover:scale-105 active:scale-95"
+                    aria-label="공유하기"
+                  >
+                    <Image
+                      src="/home/share-no-bg.png"
+                      alt="공유"
+                      width={30}
+                      height={30}
+                      className="h-7 w-7 object-contain mr-8"
+                    />
+                  </button>
+                  {showShareSheet && (
+                    <div className="absolute left-1/2 top-11 z-40 w-40 -translate-x-1/2 rounded-2xl bg-slate-900/95 p-3 text-white shadow-2xl">
+                      <div className="flex flex-col gap-2 text-sm">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!shareLink) return;
+                            try {
+                              await navigator.clipboard.writeText(shareLink);
+                              setMessage("링크가 복사되었습니다.");
+                            } catch {
+                              setMessage("링크 복사에 실패했습니다.");
+                            }
+                            setShowShareSheet(false);
+                          }}
+                          className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-left hover:bg-white/15 transition"
+                        >
+                          <span className="text-lg">🔗</span>
+                          <span className="text-slate-100">링크 복사</span>
+                        </button>
+                        <a
+                          href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
+                            "내 트리를 꾸며보세요 🎄"
+                          )}&&url=${encodeURIComponent(shareLink)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 hover:bg-white/15 transition"
+                          onClick={() => setShowShareSheet(false)}
+                        >
+                          <span className="text-lg">⤴️</span>
+                          <span className="text-slate-100">공유하기</span>
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <p className="mt-2 text-sm font-semibold text-white">{`좋아요 ${likeCount}개`}</p>
+              <button
+                type="button"
+                onClick={() => setShowLetter(true)}
+                className="absolute bottom-3 right-3 flex h-14 w-14 items-center justify-center rounded-full p-2 shadow-lg transition hover:-translate-y-[1px] hover:shadow-xl active:translate-y-[1px]"
+                aria-label="산타 편지"
+              >
+                <Image
+                  src="/home/santa-letter-no-bg.png"
+                  alt="산타 편지 보기"
+                  width={56}
+                  height={56}
+                  className={`h-12 w-12 object-contain ${letterPulse ? "letter-bounce" : ""}`}
+                />
+              </button>
             </div>
           </div>
 
-          <div className="flex w-full max-w-[360px] flex-col items-center gap-3 rounded-[28px] bg-gradient-to-b  px-4 py-6 shadow-lg backdrop-blur">
-            {emptySlots.length === 0 ? (
-              <div className="w-full rounded-2xl bg-white/15 px-4 py-3 text-center text-sm font-semibold text-white">
-                빈 슬롯이 없습니다.
+            <div className="flex w-full max-w-[360px] flex-col items-center gap-3 rounded-[28px] bg-gradient-to-b px-3 py-5 shadow-lg backdrop-blur">
+              {emptySlots.length === 0 ? (
+                <div className="w-full rounded-2xl border border-amber-200/60 bg-white/85 px-4 py-4 text-center text-sm font-bold text-amber-900 shadow-inner">
+                  트리가 완성되었습니다!
+                </div>
+              ) : (
+              <div className="w-full rounded-2xl bg-white/12 p-4">
+                <p className="mb-2 text-center text-sm font-semibold text-white">
+                  빈 슬롯을 선택하세요
+                </p>
+                <div
+                  className="relative w-full overflow-hidden rounded-2xl bg-white/10 py-4"
+                  onWheel={(e) => {
+                    e.preventDefault();
+                    const now = performance.now();
+                    if (now - slotWheelTsRef.current < 80) return;
+                    slotWheelTsRef.current = now;
+                    if (orderedSlots.length === 0) return;
+                    if (Math.abs(e.deltaY) < 5) return;
+                    const step = e.deltaY > 0 ? 1 : -1;
+                    setSlot((prev) => {
+                      const currentIndex =
+                        prev !== null
+                          ? orderedSlots.indexOf(prev)
+                          : orderedSlots.length - 1;
+                      const nextIndex = Math.min(
+                        Math.max(currentIndex + step, 0),
+                        orderedSlots.length - 1
+                      );
+                      return orderedSlots[nextIndex];
+                    });
+                  }}
+                  onTouchStart={(e) => {
+                    const y = e.touches[0]?.clientY ?? 0;
+                    slotTouchStartRef.current = y;
+                  }}
+                  onTouchEnd={(e) => {
+                    const start = slotTouchStartRef.current ?? 0;
+                    const end = e.changedTouches[0]?.clientY ?? start;
+                    slotTouchStartRef.current = null;
+                    const delta = end - start;
+                    if (Math.abs(delta) < 20 || orderedSlots.length === 0) return;
+                    const step = delta > 0 ? 1 : -1;
+                    setSlot((prev) => {
+                      const currentIndex =
+                        prev !== null
+                          ? orderedSlots.indexOf(prev)
+                          : orderedSlots.length - 1;
+                      const nextIndex = Math.min(
+                        Math.max(currentIndex + step, 0),
+                        orderedSlots.length - 1
+                      );
+                      return orderedSlots[nextIndex];
+                    });
+                  }}
+                >
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/8 via-transparent to-white/8" />
+                  <div className="pointer-events-none absolute inset-x-4 top-1/2 h-[82px] -translate-y-1/2 rounded-2xl shadow-inner" />
+                <div className="relative mx-auto flex h-[170px] w-full max-w-[240px] flex-col items-center justify-center gap-2 overflow-hidden">
+                  {(() => {
+                    const currentIndex =
+                      selectedSlot !== null
+                        ? orderedSlots.indexOf(selectedSlot)
+                        : orderedSlots.length - 1;
+                    const safeIndex = currentIndex === -1 ? orderedSlots.length - 1 : currentIndex;
+                    const viewSlots = [-1, 0, 1].map((offset) => {
+                      const idx = safeIndex + offset;
+                      return orderedSlots[idx] ?? null;
+                    });
+
+                    return viewSlots.map((slotValue, i) => {
+                      const isActive = i === 1;
+                      const exists = slotValue !== null;
+                      const opacity = isActive ? 1 : exists ? 0.4 : 0.12;
+                      const scale = isActive ? 1 : 0.9;
+                      return (
+                        <button
+                          key={slotValue ?? `placeholder-${i}`}
+                          type="button"
+                          disabled={!exists}
+                          onClick={() => exists && setSlot(slotValue)}
+                          className="relative flex h-[62px] w-full items-center justify-center rounded-2xl px-6 text-lg font-extrabold text-slate-900 transition-transform"
+                          style={{
+                            opacity,
+                            transform: `scale(${scale})`,
+                            background:
+                              exists && isActive
+                                ? "linear-gradient(180deg,#ffe08a 0%,#f7b733 100%)"
+                                : "transparent",
+                            color: exists ? (isActive ? "#7a3b00" : "#1f2937") : "transparent",
+                            border: exists && isActive ? "2px solid #facc15" : "1px solid transparent",
+                            pointerEvents: exists ? "auto" : "none",
+                          }}
+                        >
+                          {exists ? `슬롯 ${slotValue + 1}` : ""}
+                        </button>
+                      );
+                    });
+                    })()}
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div
-                className="relative w-full overflow-hidden rounded-2xl bg-white/10 py-4"
-                onWheel={handleWheel}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
+            )}
+            {emptySlots.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (isLoggedIn) {
+                    setShowCreateModal(true);
+                  } else {
+                    openVolrModal();
+                  }
+                }}
+                className="w-full rounded-full bg-emerald-300 px-6 py-3 text-center text-lg font-bold text-emerald-900 shadow-[0_12px_0_rgba(0,0,0,0.18)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_14px_0_rgba(0,0,0,0.2)] active:translate-y-0 active:shadow-[0_10px_0_rgba(0,0,0,0.16)]"
               >
-                <div className="absolute inset-x-4 top-1/2 h-10 -translate-y-1/2 rounded-xl border border-white/30 bg-white/10" />
-                <div className="flex flex-col items-center gap-2 py-4">
-                  {emptySlots.map((s) => {
-                    const idx = emptySlots.indexOf(selectedSlot ?? emptySlots[0]);
-                    const myIdx = emptySlots.indexOf(s);
-                    const dist = Math.abs(myIdx - idx);
-                    const scale = dist === 0 ? 1 : dist === 1 ? 0.9 : 0.8;
-                    const opacity = dist === 0 ? 1 : dist === 1 ? 0.75 : 0.5;
+                새 트리 만들기
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleAttachDrawn}
+                disabled={loading}
+                className="w-full rounded-full bg-amber-300 px-6 py-4 text-center text-lg font-bold text-amber-900 shadow-[0_12px_0_rgba(0,0,0,0.18)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_14px_0_rgba(0,0,0,0.2)] active:translate-y-0 active:shadow-[0_10px_0_rgba(0,0,0,0.16)] disabled:opacity-60"
+              >
+                오너먼트를 선택하세요!
+              </button>
+            )}
+            {inventory.length > 0 && (
+              <div className="w-full rounded-2xl p-3 text-sm text-white/90 mt-2">
+                <p className="mb-2 text-center font-semibold">내 오너먼트</p>
+                <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
+                  {inventory.map((item) => {
+                    const isSelected = drawn?.tempId === `inv-${item.tokenId}`;
                     return (
                       <button
-                        key={s}
-                        type="button"
-                        onClick={() => setSlot(s)}
-                        className={`w-full rounded-xl px-4 py-2 text-center text-base font-bold text-white transition`}
+                        key={item.tokenId}
+                        onClick={() =>
+                          setDrawn({
+                            tempId: `inv-${item.tokenId}`,
+                            imageUrl: item.imageUrl,
+                          })
+                        }
+                        className="group flex min-w-[90px] snap-start flex-col items-center gap-1 rounded-xl bg-white/15 p-2 text-white transition hover:-translate-y-0.5 hover:shadow-md"
                         style={{
-                          transform: `scale(${scale})`,
-                          opacity,
+                          border: isSelected ? "2px solid #facc15" : "1px solid rgba(255,255,255,0.2)",
+                          boxShadow: isSelected ? "0 0 0 4px rgba(250,204,21,0.25)" : undefined,
+                          transform: isSelected ? "translateY(-2px)" : undefined,
                         }}
                       >
-                        슬롯 {s + 1}
+                        <div className="h-16 w-16 overflow-hidden rounded-lg border border-white/20 bg-slate-900/60">
+                        <Image
+                          src={item.imageUrl}
+                          alt={`ornament-${item.tokenId}`}
+                          width={64}
+                          height={64}
+                          className="h-full w-full object-contain"
+                        />
+                      </div>
+                        <span className="text-[11px] text-amber-200">
+                          x{item.balance}
+                        </span>
                       </button>
                     );
                   })}
                 </div>
               </div>
             )}
-            <button
-              type="button"
-              onClick={handleAttachDrawn}
-              disabled={loading}
-              className="w-full rounded-full bg-amber-300 px-6 py-4 text-center text-lg font-bold text-amber-900 shadow-[0_12px_0_rgba(0,0,0,0.18)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_14px_0_rgba(0,0,0,0.2)] active:translate-y-0 active:shadow-[0_10px_0_rgba(0,0,0,0.16)] disabled:opacity-60"
-            >
-              오너먼트 달기
-            </button>
-            {message && <p className="text-center text-xs text-white/90">{message}</p>}
           </div>
         </div>
-      ) : (
-        <div className="relative z-10 mt-6 rounded-3xl border border-white/10 bg-white/10 p-4 text-white shadow-lg">
-          <h2 className="text-xl font-bold">아직 트리가 없어요</h2>
-          <p className="mt-2 text-sm text-white/90">
-            트리를 만들고 친구에게 오너먼트를 부탁하세요. 출석 체크로 매일 1개씩 무료 오너먼트를 드립니다.
-          </p>
-          <Link
-            href="/tree/new"
-            className="mt-4 inline-flex rounded-full bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-900 shadow"
-          >
-            🎄 트리 생성하기
-          </Link>
-        </div>
-      )}
+      ) : null}
 
       {showGacha && (
         <div
@@ -379,7 +903,7 @@ export function HomeHero({ primaryTree }: Props) {
           onClick={() => setShowGacha(false)}
         >
           <div
-            className="modal-pop relative h-[70vh] w-[90vw] max-w-xl rounded-3xl bg-white p-7 shadow-2xl"
+            className="modal-pop relative w-[92vw] max-w-xl overflow-hidden rounded-3xl bg-white p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -389,71 +913,150 @@ export function HomeHero({ primaryTree }: Props) {
             >
               닫기
             </button>
-            <div className="mt-4 flex h-full flex-col items-center justify-center gap-6 text-slate-900">
+            <div className="mt-2 flex max-h-[80vh] flex-col items-center gap-4 overflow-y-auto text-slate-900">
               {!drawn ? (
                 <>
                   <Image
                     src="/giftbox.png"
                     alt="gift box"
-                    width={340}
-                    height={340}
-                    className="h-64 w-64 object-contain"
-                    unoptimized
+                    width={240}
+                    height={240}
+                    className="h-48 w-48 object-contain"
                   />
                   <button
                     type="button"
                     onClick={handleDraw}
                     disabled={loading}
-                    className="inline-flex min-w-[240px] items-center justify-center rounded-full bg-gradient-to-b from-amber-300 to-amber-400 px-8 py-4 text-2xl font-extrabold text-amber-900 shadow-[0_16px_0_rgba(0,0,0,0.18)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_18px_0_rgba(0,0,0,0.2)] active:translate-y-0 active:shadow-[0_14px_0_rgba(0,0,0,0.16)] disabled:opacity-60"
+                    className="inline-flex min-w-[220px] items-center justify-center rounded-full bg-gradient-to-b from-amber-300 to-amber-400 px-6 py-4 text-xl font-extrabold text-amber-900 shadow-[0_14px_0_rgba(0,0,0,0.18)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_16px_0_rgba(0,0,0,0.2)] active:translate-y-0 active:shadow-[0_12px_0_rgba(0,0,0,0.16)] disabled:opacity-60"
                   >
                     🎁 뽑기
                   </button>
                 </>
               ) : (
                 <div className="w-full max-w-sm text-center">
-                  <p className="text-2xl font-christmas font-bold text-amber-800 pb-6">🎉 축하합니다!</p>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="pb-4 text-2xl font-christmas font-bold text-amber-800">
+                    🎉 축하합니다!
+                  </p>
+                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                     <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
                       <span>뽑은 오너먼트</span>
-                      <span className="text-slate-400">{drawn.tempId.slice(0, 6)}</span>
+                      <span className="text-slate-400">
+                        {drawn.tempId.slice(0, 6)}
+                      </span>
                     </div>
-                  <div className="flex items-center justify-center">
-                    <Image
-                      src={drawn.imageUrl}
-                      alt="drawn ornament"
-                      width={260}
-                      height={260}
-                      className="max-h-64 rounded-xl object-contain drop-shadow-lg"
-                      unoptimized
-                    />
-                  </div>
-                  <div className="grid w-full grid-cols-2 gap-3 pt-6">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDrawn(null);
-                        setShowGacha(false);
-                      }}
-                      className="w-full rounded-md border border-[#6b6153] bg-gradient-to-b from-[#7a6f60] to-[#5b5145] px-4 py-3 text-sm font-semibold text-[#f4e8d0] shadow-[0_6px_0_rgba(0,0,0,0.25)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_8px_0_rgba(0,0,0,0.28)] active:translate-y-0 active:shadow-[0_6px_0_rgba(0,0,0,0.2)]"
-                    >
-                      취소
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDraw}
-                      disabled={loading}
-                      className="w-full rounded-md border border-[#3d5f5d] bg-gradient-to-b from-[#4f8c89] to-[#3c6d6b] px-4 py-3 text-sm font-bold text-[#f2e8c6] shadow-[0_6px_0_rgba(0,0,0,0.25)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_8px_0_rgba(0,0,0,0.28)] active:translate-y-0 active:shadow-[0_6px_0_rgba(0,0,0,0.2)] disabled:opacity-60"
-                    >
-                      다시 뽑기
-                    </button>
-                  </div>
+                    <div className="flex items-center justify-center">
+                      <Image
+                        src={drawn.imageUrl}
+                        alt="drawn ornament"
+                        width={220}
+                        height={220}
+                        className="max-h-52 rounded-xl object-contain drop-shadow-lg"
+                      />
+                    </div>
+                    <div className="flex w-full flex-col items-center gap-3 pt-3">
+                      <button
+                        type="button"
+                        onClick={handleDraw}
+                        disabled={loading}
+                        className="inline-flex min-w-[200px] items-center justify-center rounded-full border border-[#3d5f5d] bg-gradient-to-b from-[#4f8c89] to-[#3c6d6b] px-5 py-3 text-sm font-extrabold text-[#f2e8c6] shadow-[0_8px_0_rgba(0,0,0,0.25)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_10px_0_rgba(0,0,0,0.28)] active:translate-y-0 active:shadow-[0_8px_0_rgba(0,0,0,0.2)] disabled:opacity-60"
+                      >
+                        또 뽑기
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
-              {message && <p className="text-center text-xs text-slate-500">{message}</p>}
+              {message && (
+                <p className="text-center text-xs text-slate-500">{message}</p>
+              )}
             </div>
           </div>
         </div>
+      )}
+
+      {showCreateModal && (
+        <CreateTreeModal onClose={() => setShowCreateModal(false)} />
+      )}
+
+      {showProfile && (
+        <ProfileModal
+          open={showProfile}
+          loading={profileLoading}
+          error={profileError}
+          profile={profileData}
+          likesUsedOverride={profileLikesUsed}
+          extractImage={extractImage}
+          onClose={() => setShowProfile(false)}
+        />
+      )}
+
+      {/* 완료 모달 제거 */}
+
+      {showLetter && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setShowLetter(false)}
+        >
+          <div
+            className="modal-pop relative w-[92vw] max-w-xl overflow-hidden rounded-3xl bg-gradient-to-b from-white via-amber-50 to-rose-50 p-5 text-slate-900 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setShowLetter(false)}
+              className="absolute right-4 top-4 text-sm font-semibold text-slate-500"
+            >
+              ✕
+            </button>
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <Image
+                  src="/home/santa-letter-no-bg.png"
+                  alt="산타 레터"
+                  width={72}
+                  height={72}
+                  className="h-16 w-16 object-contain"
+                />
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-amber-500">
+                    Santa&apos;s Letter
+                  </p>
+                  <p className="text-xl font-christmas font-bold text-amber-800">
+                    온체인 투자 분석
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    트리 만들 때 서명한 지갑을 기반으로 합니다.
+                  </p>
+                </div>
+              </div>
+              {letterCharacter ? (
+                <div className="space-y-2 rounded-2xl border border-amber-100 bg-white/90 p-4 shadow-inner">
+                  <p className="text-base font-extrabold text-slate-900">
+                    {letterCharacter.emoji} {letterCharacter.title}
+                  </p>
+                  <p className="text-sm text-slate-700">{letterCharacter.description}</p>
+                  <p className="text-[11px] text-amber-700">
+                    이 트리는 지갑의 온체인 패턴을 산타가 해석한 결과를 담고 있어요.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-amber-200 bg-white/80 p-4 text-sm text-slate-600">
+                  아직 분석 결과가 없습니다. 잠시 후 다시 시도하거나 트리를 새로 만들어 주세요.
+                </div>
+              )}
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>※ 최신 온체인 활동을 반영하기 위해 서명 후 자동 분석됩니다.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLeaderboard && (
+        <LeaderboardModal
+          open={showLeaderboard}
+          onClose={() => setShowLeaderboard(false)}
+        />
       )}
 
       {showAttendance && (
@@ -465,7 +1068,7 @@ export function HomeHero({ primaryTree }: Props) {
           }}
         >
           <div
-            className="modal-pop relative w-[92vw] max-w-xl rounded-3xl bg-gradient-to-b from-amber-50 via-white to-pink-50 p-5 shadow-2xl"
+            className="modal-pop relative w-[92vw] max-w-xl overflow-hidden rounded-3xl bg-gradient-to-b from-amber-50 via-white to-pink-50 p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -479,15 +1082,14 @@ export function HomeHero({ primaryTree }: Props) {
               ✕
             </button>
 
-            <div className="flex flex-col items-center gap-4 text-slate-900">
+            <div className="flex max-h-[80vh] flex-col items-center gap-4 overflow-y-auto text-slate-900">
               <div className="flex flex-col items-center">
                 <Image
-                  src="/santa-check.png"
+                  src="/home/santa-check.png"
                   alt="출석 산타"
                   width={160}
                   height={160}
                   className="h-36 w-36 object-contain"
-                  unoptimized
                 />
                 <div className="mt-3 rounded-full bg-gradient-to-r from-red-500 to-pink-500 px-5 py-1 text-sm font-bold text-white shadow">
                   출석 보상
@@ -533,7 +1135,7 @@ export function HomeHero({ primaryTree }: Props) {
           onClick={() => setShowQuest(false)}
         >
           <div
-            className="modal-pop relative w-[92vw] max-w-xl rounded-3xl bg-gradient-to-b from-purple-50 via-white to-indigo-50 p-5 shadow-2xl"
+            className="modal-pop relative w-[92vw] max-w-xl overflow-hidden rounded-3xl bg-gradient-to-b from-purple-50 via-white to-indigo-50 p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -543,13 +1145,17 @@ export function HomeHero({ primaryTree }: Props) {
             >
               ✕
             </button>
-            <div className="flex flex-col items-center gap-4 text-slate-900">
+            <div className="flex max-h-[80vh] flex-col items-center gap-4 overflow-y-auto text-slate-900">
               <div className="text-center space-y-1">
-                <p className="text-xs uppercase font-semibold tracking-[0.2em] text-purple-500">Partner Quest</p>
+                <p className="text-xs uppercase font-semibold tracking-[0.2em] text-purple-500">
+                  Partner Quest
+                </p>
                 <p className="text-2xl font-christmas font-bold text-purple-800 drop-shadow-[0_4px_8px_rgba(128,0,255,0.25)]">
                   퀘스트 보드
                 </p>
-                <p className="text-sm text-slate-600">퀘스트를 완료하고 뽑기권을 받아보세요.</p>
+                <p className="text-sm text-slate-600">
+                  퀘스트를 완료하고 뽑기권을 받아보세요.
+                </p>
               </div>
               <div className="w-full space-y-3">
                 {quests.map((q) => (
@@ -559,8 +1165,12 @@ export function HomeHero({ primaryTree }: Props) {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="text-base font-semibold text-slate-900">{q.title}</p>
-                        <p className="text-sm text-slate-600">{q.description}</p>
+                        <p className="text-base font-semibold text-slate-900">
+                          {q.title}
+                        </p>
+                        <p className="text-sm text-slate-600">
+                          {q.description}
+                        </p>
                       </div>
                       <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700">
                         {q.reward}
@@ -569,7 +1179,9 @@ export function HomeHero({ primaryTree }: Props) {
                     <button
                       type="button"
                       className="w-full rounded-full bg-gradient-to-b from-amber-300 to-amber-400 px-4 py-2 text-sm font-bold text-amber-900 shadow-[0_8px_0_rgba(0,0,0,0.16)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_10px_0_rgba(0,0,0,0.18)] active:translate-y-0 active:shadow-[0_6px_0_rgba(0,0,0,0.14)]"
-                      onClick={() => setMessage("퀘스트 검증/보상은 추후 연동 예정입니다.")}
+                      onClick={() =>
+                        setMessage("퀘스트 검증/보상은 추후 연동 예정입니다.")
+                      }
                     >
                       완료하기
                     </button>
@@ -581,6 +1193,20 @@ export function HomeHero({ primaryTree }: Props) {
           </div>
         </div>
       )}
+
+      {/* 패스키 등록 모달: 로그인 후 패스키가 없으면 강제 노출 */}
+      <PasskeyEnrollView
+        isOpen={showPasskeyEnroll}
+        wrapInModal
+        onComplete={() => {
+          setShowPasskeyEnroll(false);
+          setMessage("패스키 등록이 완료되었습니다.");
+        }}
+        onError={(err) => {
+          setMessage(err.message || "패스키 등록에 실패했습니다.");
+        }}
+        onClose={() => setShowPasskeyEnroll(false)}
+      />
     </div>
   );
 }

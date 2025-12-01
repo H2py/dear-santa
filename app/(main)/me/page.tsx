@@ -119,14 +119,13 @@ export default async function MePage() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="h-14 w-14 overflow-hidden rounded-lg border border-white/10 bg-slate-900/70">
-                      <Image
-                        src={o.imageUrl}
-                        alt=""
-                        width={56}
-                        height={56}
-                        className="h-full w-full object-cover"
-                        unoptimized
-                      />
+                    <Image
+                      src={o.imageUrl}
+                      alt=""
+                      width={56}
+                      height={56}
+                      className="h-full w-full object-cover"
+                    />
                     </div>
                     <div>
                       <p className="text-white">슬롯 {o.slotIndex + 1}</p>
@@ -162,7 +161,6 @@ export default async function MePage() {
                             width={56}
                             height={56}
                             className="h-full w-full object-cover"
-                            unoptimized
                           />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-500">
@@ -213,7 +211,6 @@ export default async function MePage() {
                             width={56}
                             height={56}
                             className="h-full w-full object-cover"
-                            unoptimized
                           />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-500">

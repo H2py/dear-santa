@@ -3,9 +3,7 @@ import { cookies, headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { apiFetch } from "@/src/lib/api-client";
 import type { TreeDetail } from "@/src/lib/types";
-import { TreeActions } from "@/src/components/tree-actions";
-import { ShareActions } from "@/src/components/share-actions";
-import { TreePreview } from "@/src/components/tree-preview";
+import { HomeHero } from "@/src/components/home-hero";
 
 async function getTree(id: string) {
   try {
@@ -60,46 +58,18 @@ export default async function TreePage({
     notFound();
   }
   const { tree } = result;
-  const shareRef = tree.shareCode ?? tree.owner.id;
-  const shareUrl = `${origin}/tree/${tree.id}?ref=${shareRef}&tree_id=${tree.id}`;
 
   return (
-    <main className="min-h-screen px-4 pb-20 pt-6">
-      <div className="flex items-center justify-between">
-        <Link href="/" className="text-sm text-emerald-300">
+    <main className="min-h-screen px-4 pb-10 pt-4">
+      <div className="mb-3 flex items-center justify-between text-white">
+        <Link href="/" className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white shadow">
           ← 홈
         </Link>
-        <span className="text-xs uppercase tracking-[0.2em] text-slate-300">
+        <span className="text-[11px] uppercase tracking-[0.25em] text-white/80">
           {tree.status === "COMPLETED" ? "완성" : "진행중"}
         </span>
       </div>
-
-      <section className="mt-4 space-y-4">
-        <div className="space-y-1">
-          <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Tree</p>
-          <h1 className="text-xl font-bold">트리 #{tree.id.slice(0, 6)}</h1>
-        </div>
-
-        <div className="space-y-4">
-          <TreePreview
-            treeId={tree.id}
-            background={tree.background}
-            likeCount={tree.likeCount}
-            liked={tree.likedByCurrentUser}
-            ornaments={tree.ornaments.map((o) => ({
-              slotIndex: o.slotIndex,
-              imageUrl: o.imageUrl,
-            }))}
-          />
-
-          <TreeActions
-            treeId={tree.id}
-            ornaments={tree.ornaments.map((o) => ({ slotIndex: o.slotIndex }))}
-          />
-
-          <ShareActions url={shareUrl} />
-        </div>
-      </section>
+      <HomeHero primaryTree={tree} />
     </main>
   );
 }

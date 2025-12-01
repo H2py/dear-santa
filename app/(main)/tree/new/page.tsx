@@ -7,16 +7,16 @@ import { useRouter } from "next/navigation";
 
 type BgOption = { id: string; label: string; price: string };
 const backgrounds: BgOption[] = [
-  { id: "1", label: "Aurora Mint", price: "0.5 XMAS" },
-  { id: "2", label: "Cosmic Blue", price: "0.5 XMAS" },
-  { id: "3", label: "Crimson Night", price: "0.5 XMAS" },
-  { id: "4", label: "Nordic Snow", price: "0.5 XMAS" },
-  { id: "5", label: "Cyber Neon", price: "0.5 XMAS" },
-  { id: "6", label: "Starry Sky", price: "0.5 XMAS" },
-  { id: "7", label: "Frosted Lake", price: "0.5 XMAS" },
-  { id: "8", label: "Twilight Pink", price: "0.5 XMAS" },
-  { id: "9", label: "Shadow Pine", price: "0.5 XMAS" },
-  { id: "10", label: "Candy Cane", price: "0.5 XMAS" },
+  { id: "1", label: "Aurora Mint", price: "0.5 zmas" },
+  { id: "2", label: "Cosmic Blue", price: "0.5 zmas" },
+  { id: "3", label: "Crimson Night", price: "0.5 zmas" },
+  { id: "4", label: "Nordic Snow", price: "0.5 zmas" },
+  { id: "5", label: "Cyber Neon", price: "0.5 zmas" },
+  { id: "6", label: "Starry Sky", price: "0.5 zmas" },
+  { id: "7", label: "Frosted Lake", price: "0.5 zmas" },
+  { id: "8", label: "Twilight Pink", price: "0.5 zmas" },
+  { id: "9", label: "Shadow Pine", price: "0.5 zmas" },
+  { id: "10", label: "Candy Cane", price: "0.5 zmas" },
 ];
 
 const DEFAULT_SHAPE = "classic";
@@ -38,14 +38,20 @@ export default function CreateTreePage() {
 
   const handlePrev = () =>
     setBgIndex((prev) => (prev - 1 + backgrounds.length) % backgrounds.length);
-  const handleNext = () => setBgIndex((prev) => (prev + 1) % backgrounds.length);
+  const handleNext = () =>
+    setBgIndex((prev) => (prev + 1) % backgrounds.length);
 
   const requestWalletSignature = async () => {
     type EthereumProvider = {
-      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+      request: (args: {
+        method: string;
+        params?: unknown[];
+      }) => Promise<unknown>;
     };
-    const eth = (window as typeof window & { ethereum?: EthereumProvider }).ethereum;
-    if (!eth) throw new Error("지갑이 감지되지 않았습니다 (MetaMask 등 설치 필요)");
+    const eth = (window as typeof window & { ethereum?: EthereumProvider })
+      .ethereum;
+    if (!eth)
+      throw new Error("지갑이 감지되지 않았습니다 (MetaMask 등 설치 필요)");
 
     const accounts = await eth.request({ method: "eth_requestAccounts" });
     if (!Array.isArray(accounts) || typeof accounts[0] !== "string") {
@@ -53,7 +59,9 @@ export default function CreateTreePage() {
     }
     const account = accounts[0];
 
-    const signedMessage = `Zeta Tree: 배경 ${selectedBg.id} 트리 민트 승인 (${Date.now()})`;
+    const signedMessage = `Zeta Tree: 배경 ${
+      selectedBg.id
+    } 트리 민트 승인 (${Date.now()})`;
     const signatureResult = await eth.request({
       method: "personal_sign",
       params: [signedMessage, account],
@@ -69,7 +77,8 @@ export default function CreateTreePage() {
     setMessage(null);
     setLoading(true);
     try {
-      const { account, signature, signedMessage } = await requestWalletSignature();
+      const { account, signature, signedMessage } =
+        await requestWalletSignature();
 
       await fetch("/api/auth/guest", { method: "POST" });
       const res = await fetch("/api/trees", {
@@ -86,9 +95,12 @@ export default function CreateTreePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "트리 생성에 실패했습니다.");
       setCreatedTreeId(data.tree.id);
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
       setShareUrl(`${origin}/?treeId=${data.tree.id}`);
-      setMessage("트리를 만들었어요! 이제 친구를 초대해 오너먼트를 받아보세요.");
+      setMessage(
+        "트리를 만들었어요! 이제 친구를 초대해 오너먼트를 받아보세요."
+      );
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "에러가 발생했습니다.";
@@ -101,10 +113,13 @@ export default function CreateTreePage() {
   return (
     <main className="min-h-screen bg-slate-950 px-4 pb-20 pt-6 text-white">
       <header className="space-y-1">
-        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Create</p>
+        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+          Create
+        </p>
         <h1 className="text-xl font-semibold">내 크리스마스 트리 만들기</h1>
         <p className="text-sm text-slate-400">
-          배경을 선택하고 트리를 생성하세요. 지갑 서명/결제 연동은 다음 단계에서 연결됩니다.
+          배경을 선택하고 트리를 생성하세요. 지갑 서명/결제 연동은 다음 단계에서
+          연결됩니다.
         </p>
       </header>
 
@@ -138,7 +153,9 @@ export default function CreateTreePage() {
             </button>
             <div className="flex flex-col items-center">
               <span className="text-white">{selectedBg.label}</span>
-              <span className="text-xs text-emerald-300">Price {selectedBg.price}</span>
+              <span className="text-xs text-emerald-300">
+                Price {selectedBg.price}
+              </span>
             </div>
             <button
               onClick={handleNext}
@@ -181,7 +198,10 @@ export default function CreateTreePage() {
                     await navigator.clipboard.writeText(shareUrl);
                     setShareMsg("링크를 클립보드에 복사했어요.");
                   } catch (err: unknown) {
-                    const msg = err instanceof Error ? err.message : "복사에 실패했습니다.";
+                    const msg =
+                      err instanceof Error
+                        ? err.message
+                        : "복사에 실패했습니다.";
                     setShareMsg(msg);
                   }
                 }}

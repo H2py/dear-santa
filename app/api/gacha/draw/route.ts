@@ -5,9 +5,13 @@ import { getCurrentUser } from "@/src/lib/auth";
 import { decrementTicket, incrementTickets } from "@/src/lib/user";
 import { ORNAMENT_TOKEN_IDS } from "@/src/lib/constants/gameplay";
 import { getOrnamentContract } from "@/src/lib/onchain";
+import { setSessionCookie } from "@/src/lib/session";
 import { verifyMessage, type Address, type Hex } from "viem";
 
-const ORNAMENT_IMAGES = Array.from({ length: 17 }, (_, i) => `/ornaments/${i + 1}.png`);
+const ORNAMENT_IMAGES = Array.from(
+  { length: 17 },
+  (_, i) => `/ornaments/${i + 1}.png`
+);
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -26,7 +30,8 @@ export async function POST(req: Request) {
   const signedMessage = body.signedMessage;
 
   if (count !== 1) return badRequest("only count=1 supported");
-  if (!walletAddress || !signature || !signedMessage) return badRequest("wallet verification failed");
+  if (!walletAddress || !signature || !signedMessage)
+    return badRequest("wallet verification failed");
 
   const checks = await verifyMessage({
     address: walletAddress,
@@ -35,36 +40,66 @@ export async function POST(req: Request) {
   });
   if (!checks) return badRequest("signature invalid");
 
-  if (!user.walletAddress || user.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { walletAddress },
+  // 지갑이 이미 다른 user에 매핑돼 있으면 그 계정을 재사용하고 세션을 그쪽으로 전환
+  let activeUser = user;
+  if (
+    !user.walletAddress ||
+    user.walletAddress.toLowerCase() !== walletAddress.toLowerCase()
+  ) {
+    const existing = await prisma.user.findFirst({
+      where: { walletAddress: { equals: walletAddress, mode: "insensitive" } },
+      select: {
+        id: true,
+        guestId: true,
+        gachaTickets: true,
+        totalLikesUsed: true,
+        walletAddress: true,
+      },
     });
+    if (existing && existing.id !== user.id) {
+      activeUser = existing as typeof user;
+      if (existing.guestId) {
+        await setSessionCookie(existing.guestId);
+      }
+    } else {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { walletAddress },
+      });
+      activeUser = {
+        ...user,
+        walletAddress,
+      };
+    }
   }
 
-  let tickets = user.gachaTickets;
+  let tickets = activeUser.gachaTickets;
   if (tickets <= 0) {
     // 안전장치: 티켓이 없을 때 3장 충전 후 진행
-    tickets = (await incrementTickets(user.id, 3)).gachaTickets;
+    tickets = (await incrementTickets(activeUser.id, 3)).gachaTickets;
   }
 
-  await decrementTicket(user.id);
+  await decrementTicket(activeUser.id);
 
   const idx = Math.floor(Math.random() * ORNAMENT_TOKEN_IDS.length);
   const tokenId = ORNAMENT_TOKEN_IDS[idx];
   const imageUrl = ORNAMENT_IMAGES[idx];
   const ornamentId = `orn-${randomUUID()}`;
-  const origin = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ?? new URL(req.url).origin;
+  const origin =
+    process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ??
+    new URL(req.url).origin;
 
   // 온체인 즉시 민트 (동기)
   const contract = getOrnamentContract();
   const metadata = {
     name: `Zeta Ornament #${tokenId}`,
-    description: "Zeta Xmas Ornament",
+    description: "Zeta zmas Ornament",
     image: `${origin}${imageUrl}`,
     attributes: [{ trait_type: "tokenId", value: tokenId }],
   };
-  const metadataUri = `data:application/json;utf8,${encodeURIComponent(JSON.stringify(metadata))}`;
+  const metadataUri = `data:application/json;utf8,${encodeURIComponent(
+    JSON.stringify(metadata)
+  )}`;
 
   const txHash = await contract.write.mintOrnament([
     walletAddress,
@@ -76,7 +111,7 @@ export async function POST(req: Request) {
   // 기존처럼 온/오프체인 표시에 쓰이는 임시 ID/이미지 반환
   await prisma.ornamentMintQueue.create({
     data: {
-      userId: user.id,
+      userId: activeUser.id,
       walletAddress,
       tokenId,
       amount: 1,

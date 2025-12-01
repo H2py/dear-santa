@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useVolr, useVolrModal } from "@volr/react-ui";
 import type { OrnamentType } from "@/src/lib/types";
 
 type OrnamentSummary = {
@@ -26,6 +27,8 @@ const MAX_SLOTS = 10;
 
 export function TreeActions({ treeId, ornaments }: Props) {
   const router = useRouter();
+  const { evm, evmAddress, isLoggedIn } = useVolr();
+  const { open: openVolrModal } = useVolrModal();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [drawn, setDrawn] = useState<Drawn | null>(null);
@@ -52,30 +55,6 @@ export function TreeActions({ treeId, ornaments }: Props) {
     return true;
   };
 
-  const requestWalletSignature = async () => {
-    type EthereumProvider = {
-      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-    };
-    const eth = (window as typeof window & { ethereum?: EthereumProvider }).ethereum;
-    if (!eth) throw new Error("지갑이 감지되지 않았습니다 (MetaMask 등 설치 필요)");
-
-    const accounts = await eth.request({ method: "eth_requestAccounts" });
-    if (!Array.isArray(accounts) || typeof accounts[0] !== "string") {
-      throw new Error("지갑 주소를 가져올 수 없습니다.");
-    }
-    const account = accounts[0];
-    const signedMessage = `Zeta Ornament Gacha (${Date.now()})`;
-    const signatureResult = await eth.request({
-      method: "personal_sign",
-      params: [signedMessage, account],
-    });
-    if (typeof signatureResult !== "string") {
-      throw new Error("지갑 서명에 실패했습니다.");
-    }
-    const signature = signatureResult;
-    return { account, signature, signedMessage };
-  };
-
   const attachOrnament = async ({
     slotIndex,
     type,
@@ -98,12 +77,21 @@ export function TreeActions({ treeId, ornaments }: Props) {
     setMessage(null);
     setLoading(true);
     try {
-      const { account, signature, signedMessage } = await requestWalletSignature();
+      if (!isLoggedIn || !evm || !evmAddress) {
+        openVolrModal?.();
+        throw new Error("로그인 후 다시 시도해주세요.");
+      }
+      const signMessage = evm(5115)?.signMessage;
+      if (!signMessage) {
+        throw new Error("서명 모듈을 초기화하지 못했습니다.");
+      }
+      const signedMessage = `Zeta Ornament Gacha (${Date.now()})`;
+      const signature = await signMessage({ message: signedMessage });
       const res = await fetch("/api/gacha/draw", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          walletAddress: account,
+          walletAddress: evmAddress,
           signature,
           signedMessage,
         }),

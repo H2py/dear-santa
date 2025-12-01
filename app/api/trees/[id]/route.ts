@@ -20,6 +20,14 @@ export async function GET(
       ownerId: true,
       owner: { select: { id: true } },
       shareCode: true,
+      characterReport: {
+        select: {
+          characterType: true,
+          emoji: true,
+          label: true,
+          description: true,
+        },
+      },
       ornaments: {
         select: {
           id: true,
@@ -56,6 +64,14 @@ export async function GET(
       owner: { id: tree.ownerId },
       ornaments: tree.ornaments,
       likedByCurrentUser,
+      character: tree.characterReport
+        ? {
+            type: tree.characterReport.characterType,
+            emoji: tree.characterReport.emoji ?? "🎁",
+            title: tree.characterReport.label ?? "Onchain Explorer",
+            description: tree.characterReport.description ?? "온체인 활동 기반 캐릭터",
+          }
+        : null,
     },
   });
 }

@@ -156,7 +156,6 @@ export default function WalletReportPage() {
           <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-200">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-emerald-200">Next Step</p>
                 <p className="text-base font-semibold text-white">편지 받았어요? 트리에 걸고 착한 일 하기</p>
                 <p className="text-sm text-slate-300">
                   내 트리에 편지를 보관하고, 오늘의 무료 오너먼트를 써보세요.

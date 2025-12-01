@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/src/lib/prisma";
 import { badRequest, forbidden, notFound, ok, unauthorized } from "@/src/lib/api";
 import { getCurrentUser } from "@/src/lib/auth";
@@ -16,24 +17,33 @@ export async function POST(
 
   if (user.totalLikesUsed >= 5) return forbidden("like limit reached");
 
-  const existing = await prisma.like.findUnique({
-    where: { userId_treeId: { userId: user.id, treeId: id } },
+  // Idempotent create: skipDuplicates to avoid P2002 on rapid taps
+  const created = await prisma.like.createMany({
+    data: { userId: user.id, treeId: id },
+    skipDuplicates: true,
   });
-  if (existing) return badRequest("already liked");
 
-  await prisma.$transaction([
-    prisma.like.create({
-      data: { userId: user.id, treeId: id },
-    }),
-    prisma.tree.update({
+  if (created.count === 0) {
+    const refreshedTree = await prisma.tree.findUnique({
       where: { id },
-      data: { likeCount: { increment: 1 } },
-    }),
-  ]);
+      select: { likeCount: true },
+    });
+    return ok({
+      likeCount: refreshedTree?.likeCount ?? tree.likeCount,
+      totalLikesUsed: user.totalLikesUsed,
+      likedByCurrentUser: true,
+    });
+  }
+
+  await prisma.tree.update({
+    where: { id },
+    data: { likeCount: { increment: created.count } },
+  });
   const { totalLikesUsed } = await incrementLikesUsed(user.id);
+  const newLikeCount = tree.likeCount + created.count;
 
   return ok({
-    likeCount: tree.likeCount + 1,
+    likeCount: newLikeCount,
     totalLikesUsed,
     likedByCurrentUser: true,
   });
@@ -53,12 +63,34 @@ export async function DELETE(
   const existing = await prisma.like.findUnique({
     where: { userId_treeId: { userId: user.id, treeId: id } },
   });
-  if (!existing) return badRequest("not liked");
+  if (!existing) {
+    const refreshed = await prisma.tree.findUnique({ where: { id }, select: { likeCount: true } });
+    const refreshedUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { totalLikesUsed: true },
+    });
+    return ok({
+      likeCount: refreshed?.likeCount ?? tree.likeCount,
+      totalLikesUsed: refreshedUser?.totalLikesUsed ?? user.totalLikesUsed,
+      likedByCurrentUser: false,
+    });
+  }
 
   const deleted = await prisma.like.deleteMany({
     where: { userId: user.id, treeId: id },
   });
-  if (deleted.count === 0) return badRequest("not liked");
+  if (deleted.count === 0) {
+    const refreshed = await prisma.tree.findUnique({ where: { id }, select: { likeCount: true } });
+    const refreshedUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { totalLikesUsed: true },
+    });
+    return ok({
+      likeCount: refreshed?.likeCount ?? tree.likeCount,
+      totalLikesUsed: refreshedUser?.totalLikesUsed ?? user.totalLikesUsed,
+      likedByCurrentUser: false,
+    });
+  }
 
   await prisma.tree.update({
     where: { id },

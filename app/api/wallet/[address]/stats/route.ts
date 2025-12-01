@@ -188,6 +188,81 @@ function buildStoryLine(hottestMonth: { key: string; count: number } | null) {
   return `${label}, 당신의 온체인 인생이 가장 뜨거웠습니다.`;
 }
 
+export async function generateWalletStats(address: string) {
+  if (!MORALIS_API_KEY) {
+    throw new Error("MORALIS_API_KEY is missing");
+  }
+
+  const perChain = await Promise.all(
+    CHAINS.map(async (chain) => {
+      try {
+        const txs = await fetchHistoryForChain(chain, address);
+        return analyzeChain(chain, address, txs);
+      } catch (err: unknown) {
+        return {
+          chain,
+          txCount: 0,
+          protocolCount: 0,
+          gasEth: 0,
+          bestProfitUsd: 0,
+          worstLossUsd: 0,
+          monthBuckets: new Map<string, number>(),
+          error: err instanceof Error ? err.message : "unknown error",
+        };
+      }
+    })
+  );
+
+  const totals = {
+    txCount: perChain.reduce((acc, c) => acc + c.txCount, 0),
+    protocolCount: perChain.reduce((acc, c) => acc + c.protocolCount, 0),
+    gasEth: perChain.reduce((acc, c) => acc + c.gasEth, 0),
+  };
+
+  const bestProfitUsd = perChain.reduce((acc, c) => Math.max(acc, c.bestProfitUsd), 0);
+  const worstLossUsd = perChain.reduce((acc, c) => Math.min(acc, c.worstLossUsd), 0);
+  const activityPercentile = estimatePercentile(totals.txCount, totals.protocolCount);
+  const hottestMonth = mergeMonthBuckets(perChain.map((c) => c.monthBuckets));
+  const personaLabel = derivePersonaLabel(totals, bestProfitUsd);
+  const similarity = pickSimilarity(address);
+  const metrics: CharacterMetrics = {
+    tx_per_day_30d: totals.txCount / 30,
+    unique_protocols_90d: totals.protocolCount,
+    unique_chains_90d: perChain.filter((c) => c.txCount > 0).length,
+    bridge_txs_90d: 0,
+    airdrop_like_txs_90d: 0,
+    avg_hold_days_90d: 30,
+    roundtrip_trades_24h_90d: 0,
+  };
+  const character = inferCharacterType(metrics);
+
+  return {
+    address,
+    label: personaLabel,
+    character,
+    chains: perChain.map((chain) => ({
+      chain: chain.chain,
+      txCount: chain.txCount,
+      protocolCount: chain.protocolCount,
+      gasEth: chain.gasEth,
+      bestProfitUsd: chain.bestProfitUsd,
+      worstLossUsd: chain.worstLossUsd,
+      error: chain.error,
+    })),
+    totals,
+    pnl: {
+      bestProfitUsd,
+      worstLossUsd,
+    },
+    activityPercentile,
+    similarity,
+    story: {
+      hottestMonth: formatMonthLabel(hottestMonth?.key),
+      line: buildStoryLine(hottestMonth),
+    },
+  };
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ address: string }> }
@@ -231,73 +306,7 @@ export async function POST(
     return NextResponse.json({ error: "서명이 확인되지 않았습니다." }, { status: 401 });
   }
 
-  const perChain = await Promise.all(
-    CHAINS.map(async (chain) => {
-      try {
-        const txs = await fetchHistoryForChain(chain, address);
-        return analyzeChain(chain, address, txs);
-      } catch (err: unknown) {
-        return {
-          chain,
-          txCount: 0,
-          protocolCount: 0,
-          gasEth: 0,
-          bestProfitUsd: 0,
-          worstLossUsd: 0,
-          monthBuckets: new Map<string, number>(),
-          error: err instanceof Error ? err.message : "unknown error",
-        };
-      }
-    })
-  );
+  const stats = await generateWalletStats(address);
 
-  const totals = {
-    txCount: perChain.reduce((acc, c) => acc + c.txCount, 0),
-    protocolCount: perChain.reduce((acc, c) => acc + c.protocolCount, 0),
-    gasEth: perChain.reduce((acc, c) => acc + c.gasEth, 0),
-  };
-
-  const bestProfitUsd = perChain.reduce((acc, c) => Math.max(acc, c.bestProfitUsd), 0);
-  const worstLossUsd = perChain.reduce((acc, c) => Math.min(acc, c.worstLossUsd), 0);
-  const activityPercentile = estimatePercentile(totals.txCount, totals.protocolCount);
-  const hottestMonth = mergeMonthBuckets(perChain.map((c) => c.monthBuckets));
-  const personaLabel = derivePersonaLabel(totals, bestProfitUsd);
-  const similarity = pickSimilarity(address);
-  // Heuristic metrics for character mapping (using available data; bridge/airdrop/roundtrip are defaulted).
-  const metrics: CharacterMetrics = {
-    tx_per_day_30d: totals.txCount / 30,
-    unique_protocols_90d: totals.protocolCount,
-    unique_chains_90d: perChain.filter((c) => c.txCount > 0).length,
-    bridge_txs_90d: 0,
-    airdrop_like_txs_90d: 0,
-    avg_hold_days_90d: 30, // not directly available; default to neutral hold to avoid overfitting.
-    roundtrip_trades_24h_90d: 0,
-  };
-  const character = inferCharacterType(metrics);
-
-  return NextResponse.json({
-    address,
-    label: personaLabel,
-    character,
-    chains: perChain.map((chain) => ({
-      chain: chain.chain,
-      txCount: chain.txCount,
-      protocolCount: chain.protocolCount,
-      gasEth: chain.gasEth,
-      bestProfitUsd: chain.bestProfitUsd,
-      worstLossUsd: chain.worstLossUsd,
-      error: chain.error,
-    })),
-    totals,
-    pnl: {
-      bestProfitUsd,
-      worstLossUsd,
-    },
-    activityPercentile,
-    similarity,
-    story: {
-      hottestMonth: formatMonthLabel(hottestMonth?.key),
-      line: buildStoryLine(hottestMonth),
-    },
-  });
+  return NextResponse.json(stats);
 }

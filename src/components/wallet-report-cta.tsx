@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAddress, isAddress } from "viem";
 import { buildWalletProofMessage } from "@/src/lib/wallet-signature";
+import { useVolr } from "@volr/react-ui";
+import { useVolrModal } from "@volr/react-ui";
 import type { CharacterProfile } from "@/src/lib/types";
 
 type ChainStat = {
@@ -160,6 +162,8 @@ type Eip1193Provider = {
 
 export function WalletReportCta() {
   const router = useRouter();
+  const { evm, evmAddress, isLoggedIn } = useVolr();
+  const { open: openVolrModal } = useVolrModal();
   const [addresses, setAddresses] = useState<string[]>(["", "", ""]);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -184,17 +188,17 @@ export function WalletReportCta() {
       setError("지갑 주소 형식이 올바르지 않은 항목이 있습니다.");
       return;
     }
-    if (typeof window === "undefined") {
-      setError("브라우저 지갑(예: MetaMask)이 필요합니다.");
+    if (!isLoggedIn || !evm || !evmAddress) {
+      openVolrModal?.();
+      setError("로그인 후 다시 시도해주세요.");
+      return;
+    }
+    const signMessage = evm(5115)?.signMessage;
+    if (!signMessage) {
+      setError("서명 모듈 초기화에 실패했습니다.");
       return;
     }
 
-    const { ethereum } = window as typeof window & { ethereum?: Eip1193Provider };
-    if (!ethereum) {
-      setError("브라우저 지갑(예: MetaMask)이 필요합니다.");
-      return;
-    }
-    
     setLoading(true);
     setError(null);
     setInfo(null);
@@ -206,33 +210,9 @@ export function WalletReportCta() {
         const checksum = getAddress(targets[i]);
         setInfo(`(${i + 1}/${targets.length}) ${checksum.slice(0, 6)}… 서명 요청 중`);
 
-        let accounts = (await ethereum.request({
-          method: "eth_requestAccounts",
-        })) as string[];
-        let normalized = accounts.map((a) => getAddress(a));
-        if (!normalized.includes(checksum)) {
-          // 계정 연결/선택을 다시 시도 (MetaMask 계정 선택창)
-          await ethereum.request({
-            method: "wallet_requestPermissions",
-            params: [{ eth_accounts: {} }],
-          });
-          accounts = (await ethereum.request({
-            method: "eth_requestAccounts",
-          })) as string[];
-          normalized = accounts.map((a) => getAddress(a));
-          if (!normalized.includes(checksum)) {
-            throw new Error(
-              `MetaMask에서 ${checksum} 계정을 선택(연결)한 뒤 다시 시도해주세요.`
-            );
-          }
-        }
-
         const issuedYear = new Date().getFullYear();
         const message = buildWalletProofMessage(checksum, issuedYear);
-        const signature = (await ethereum.request({
-          method: "personal_sign",
-          params: [message, checksum],
-        })) as string;
+        const signature = await signMessage({ message });
 
         const res = await fetch(`/api/wallet/${checksum}/stats`, {
           method: "POST",

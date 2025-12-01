@@ -19,7 +19,8 @@ export async function POST(req: Request) {
 
   const contract = getOrnamentContract();
   const origin =
-    process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ?? new URL(req.url).origin;
+    process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ??
+    new URL(req.url).origin;
   let totalProcessed = 0;
   const results: { wallet: string; txHash?: string; error?: string }[] = [];
   let rounds = 0;
@@ -58,11 +59,13 @@ export async function POST(req: Request) {
           const imageUrl = `${origin}/ornaments/${idx}.png`;
           const metadata = {
             name: `Zeta Ornament #${i.tokenId}`,
-            description: "Zeta Xmas Ornament",
+            description: "Zeta zmas Ornament",
             image: imageUrl,
             attributes: [{ trait_type: "tokenId", value: i.tokenId }],
           };
-          return `data:application/json;utf8,${encodeURIComponent(JSON.stringify(metadata))}`;
+          return `data:application/json;utf8,${encodeURIComponent(
+            JSON.stringify(metadata)
+          )}`;
         });
 
         const txHash = await contract.write.mintBatchOrnaments([
@@ -73,15 +76,27 @@ export async function POST(req: Request) {
         ]);
 
         await prisma.ornamentMintQueue.updateMany({
-          where: { walletAddress: wallet, status: "PROCESSING", id: { in: ids } },
-          data: { status: "SENT", txHash: txHash as string, processedAt: new Date() },
+          where: {
+            walletAddress: wallet,
+            status: "PROCESSING",
+            id: { in: ids },
+          },
+          data: {
+            status: "SENT",
+            txHash: txHash as string,
+            processedAt: new Date(),
+          },
         });
 
         results.push({ wallet, txHash: txHash as string });
       } catch (err) {
         const message = err instanceof Error ? err.message : "mint failed";
         await prisma.ornamentMintQueue.updateMany({
-          where: { walletAddress: wallet, status: "PROCESSING", id: { in: ids } },
+          where: {
+            walletAddress: wallet,
+            status: "PROCESSING",
+            id: { in: ids },
+          },
           data: { status: "FAILED", error: message },
         });
         results.push({ wallet, error: message });
@@ -93,5 +108,10 @@ export async function POST(req: Request) {
   }
 
   const message = totalProcessed === 0 ? "no pending items" : undefined;
-  return NextResponse.json({ processed: totalProcessed, rounds, results, message });
+  return NextResponse.json({
+    processed: totalProcessed,
+    rounds,
+    results,
+    message,
+  });
 }
