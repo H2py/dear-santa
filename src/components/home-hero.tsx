@@ -8,9 +8,10 @@ import { TreePreview } from "@/src/components/tree-preview";
 import { CreateTreeModal } from "@/src/components/create-tree-modal";
 import { ProfileModal } from "@/src/components/profile-modal";
 import { LeaderboardModal } from "@/src/components/leaderboard-modal";
-import { useVolrModal, PasskeyEnrollView } from "@volr/react-ui";
-import { useVolr } from "@volr/react";
+import { useVolrModal, PasskeyEnrollView, useVolr } from "@volr/react-ui";
+import { encodeFunctionData } from "viem";
 import type { TreeDetail } from "@/src/lib/types";
+import { WalletReportCta } from "@/src/components/wallet-report-cta";
 
 type Props = {
   primaryTree: TreeDetail | null;
@@ -19,7 +20,12 @@ type Props = {
 export function HomeHero({ primaryTree }: Props) {
   const router = useRouter();
   const { open: openVolrModal, close: closeVolrModal } = useVolrModal();
-  const { user, evm, evmAddress, isLoggedIn } = useVolr();
+  const volr = useVolr();
+  const { evm, evmAddress, isLoggedIn } = volr;
+  const user = (volr as any)?.user;
+  const signerType = (volr as any)?.signerType;
+  const keyStorageType = (volr as any)?.keyStorageType;
+  const hasPasskey = (volr as any)?.hasPasskey;
   const [showGacha, setShowGacha] = useState(false);
   const [showAttendance, setShowAttendance] = useState(false);
   const [showQuest, setShowQuest] = useState(false);
@@ -30,10 +36,10 @@ export function HomeHero({ primaryTree }: Props) {
   const [showPasskeyEnroll, setShowPasskeyEnroll] = useState(false);
   useEffect(() => {
     // 로그인 완료 시 Volr 기본 모달이 켜져 있다면 닫기
-    if (user) {
+    if (isLoggedIn) {
       closeVolrModal?.();
     }
-  }, [user, closeVolrModal]);
+  }, [isLoggedIn, closeVolrModal]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [drawn, setDrawn] = useState<{
@@ -49,11 +55,28 @@ export function HomeHero({ primaryTree }: Props) {
   const [inventory, setInventory] = useState<
     { tokenId: string; imageUrl: string; balance: number }[]
   >([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // 게스트 세션이 없어서 401 나는 경우가 있어 클라이언트에서 보강
   useEffect(() => {
-    if (user && user.keyStorageType !== "passkey") {
+    const ensureGuest = async () => {
+      try {
+        await fetch("/api/auth/guest", { method: "POST", cache: "no-store" });
+      } catch {
+        // ignore
+      }
+    };
+    ensureGuest();
+  }, []);
+  const needsPasskey = isLoggedIn && (!!user) && (!evmAddress || signerType !== "passkey");
+
+  // 패스키가 필요한 경우에만 모달 표시. 이미 패스키가 있으면 강제로 닫음.
+  useEffect(() => {
+    if (needsPasskey) {
       setShowPasskeyEnroll(true);
+    } else if (showPasskeyEnroll) {
+      setShowPasskeyEnroll(false);
     }
-  }, [user]);
+  }, [needsPasskey, showPasskeyEnroll]);
 
   useEffect(() => {
     setOrnaments(primaryTree?.ornaments ?? []);
@@ -102,6 +125,7 @@ export function HomeHero({ primaryTree }: Props) {
   useEffect(() => {
     fetchMeOnce().then((data) => {
       if (!data) return;
+      if (data?.user?.id) setCurrentUserId(data.user.id);
       const list = (data?.ornamentNfts ?? []).map(
         (n: { tokenId: string; tokenUri: string; balance: number }) => ({
           tokenId: n.tokenId,
@@ -166,7 +190,7 @@ export function HomeHero({ primaryTree }: Props) {
       }
     };
     void loadProfile();
-  }, [showProfile, profileData, profileLoading]);
+  }, [showProfile, profileData, profileLoading, fetchMeOnce]);
   const points = useMemo(() => {
     if (!primaryTree) return 0;
     const totalSlots = 10;
@@ -200,6 +224,26 @@ export function HomeHero({ primaryTree }: Props) {
     setLiked(primaryTree?.likedByCurrentUser ?? false);
   }, [primaryTree]);
 
+  // 클라이언트 세션 기준으로 좋아요 상태 재동기화
+  useEffect(() => {
+    const refresh = async () => {
+      if (!primaryTree) return;
+      try {
+        const res = await fetch(`/api/trees/${primaryTree.id}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const tree = data?.tree;
+        if (tree) {
+          setLikeCount(tree.likeCount ?? 0);
+          setLiked(!!tree.likedByCurrentUser);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    refresh();
+  }, [primaryTree?.id]);
+
   // 트리 완성 시 축하 모달 1회 표시 (트리별로 로컬 저장)
   const [completeReady, setCompleteReady] = useState(false);
   const [completeShown, setCompleteShown] = useState(false);
@@ -207,7 +251,6 @@ export function HomeHero({ primaryTree }: Props) {
     if (!primaryTree) {
       setCompleteReady(false);
       setCompleteShown(false);
-      setShowCompleteModal(false);
       return;
     }
     if (typeof window !== "undefined") {
@@ -224,7 +267,6 @@ export function HomeHero({ primaryTree }: Props) {
   useEffect(() => {
     if (!primaryTree || !completeReady) return;
     if (emptySlots.length === 0 && !completeShown) {
-      setShowCompleteModal(true);
       setCompleteShown(true);
       if (typeof window !== "undefined") {
         localStorage.setItem(`completeSeen:${primaryTree.id}`, "1");
@@ -327,29 +369,75 @@ export function HomeHero({ primaryTree }: Props) {
     setMessage(null);
     setLoading(true);
     try {
-      if (!isLoggedIn || !evm || !evmAddress) {
+      const account = evmAddress;
+      const signMessage = (evm as any)?.(5115)?.signMessage;
+      const walletClient = (evm as any)?.(5115);
+      const sendTransaction = walletClient?.sendTransaction;
+      if (!isLoggedIn || !evm || !account) {
         openVolrModal?.();
         throw new Error("로그인 후 다시 시도해주세요.");
       }
-      const signMessage = evm(5115)?.signMessage;
+      // Volr core signer
       if (!signMessage) {
-        throw new Error("서명 모듈을 초기화하지 못했습니다.");
+        setShowPasskeyEnroll(true);
+        openVolrModal?.();
+        throw new Error("패스키 지갑을 초기화하지 못했습니다. 다시 연결해 주세요.");
       }
+      if (!sendTransaction) {
+        setShowPasskeyEnroll(true);
+        openVolrModal?.();
+        throw new Error("지갑 트랜잭션 모듈을 불러오지 못했습니다. 다시 로그인해 주세요.");
+      }
+
       const signedMessage = `Zeta Ornament Gacha (${Date.now()})`;
-      const signature = await signMessage({ message: signedMessage });
+      const signature = await signMessage({ account, message: signedMessage });
       const res = await fetch("/api/gacha/draw", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          walletAddress: evmAddress,
+          walletAddress: account,
           signature,
           signedMessage,
+          treeId: primaryTree.id,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "뽑기에 실패했습니다.");
       const picked = data.ornaments?.[0];
       if (!picked) throw new Error("뽑기 결과가 없습니다.");
+      const permit = data?.permit;
+      const permitSig = data?.signature;
+      const contractAddress = data?.contractAddress;
+      if (permit && permitSig && contractAddress) {
+        const ORNAMENT_PERMIT_ABI = [
+          {
+            type: "function",
+            name: "mintWithSignature",
+            inputs: [
+              {
+                name: "permit",
+                type: "tuple",
+                components: [
+                  { name: "to", type: "address" },
+                  { name: "tokenId", type: "uint256" },
+                  { name: "treeId", type: "uint256" },
+                  { name: "deadline", type: "uint256" },
+                  { name: "nonce", type: "uint256" },
+                ],
+              },
+              { name: "signature", type: "bytes" },
+            ],
+            outputs: [],
+            stateMutability: "nonpayable",
+          },
+        ] as const;
+        const dataField = encodeFunctionData({
+          abi: ORNAMENT_PERMIT_ABI,
+          functionName: "mintWithSignature",
+          args: [permit, permitSig],
+        });
+        await sendTransaction({ to: contractAddress, data: dataField });
+      }
       setDrawn({
         tempId: picked.tempId ?? picked.ornamentId ?? "tmp",
         imageUrl: picked.imageUrl,
@@ -576,11 +664,11 @@ export function HomeHero({ primaryTree }: Props) {
               if (showSantaReading) {
                 setShowSantaReading(false);
               } else {
-                if (isLoggedIn) {
-                  setShowCreateModal(true);
-                } else {
-                  openVolrModal();
+                if (!isLoggedIn || !evmAddress) {
+                  openVolrModal?.();
+                  return;
                 }
+                setShowCreateModal(true);
               }
             }}
             className="w-full rounded-full bg-emerald-300 px-5 py-4 text-base font-bold text-emerald-900 shadow transition hover:-translate-y-[1px] hover:shadow-lg active:translate-y-[1px]"
@@ -624,11 +712,8 @@ export function HomeHero({ primaryTree }: Props) {
             <div className="relative rounded-[32px] bg-white/18 p-4 shadow-xl shadow-purple-900/30 backdrop-blur">
               {/* 공유 시트는 카드 외부에서 토글 */}
               <TreePreview
-                treeId={primaryTree.id}
                 background={primaryTree.background}
                 shape={primaryTree.shape}
-                likeCount={primaryTree.likeCount}
-                liked={primaryTree.likedByCurrentUser}
                 ornaments={primaryTree.ornaments.map((o) => ({
                   slotIndex: o.slotIndex,
                   imageUrl: o.imageUrl,
@@ -821,7 +906,13 @@ export function HomeHero({ primaryTree }: Props) {
                 </div>
               </div>
             )}
-            {emptySlots.length === 0 ? (
+            {/* 지갑 주소 입력 (기존 컴포넌트) */}
+            <div className="mb-3 rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur">
+              <p className="mb-2 text-sm font-semibold text-white">지갑 주소 입력</p>
+              <WalletReportCta />
+            </div>
+
+            {emptySlots.length === 0 && currentUserId === primaryTree?.owner.id ? (
               <button
                 type="button"
                 onClick={() => {
@@ -839,16 +930,18 @@ export function HomeHero({ primaryTree }: Props) {
               <button
                 type="button"
                 onClick={handleAttachDrawn}
-                disabled={loading}
+                disabled={loading || !drawn}
                 className="w-full rounded-full bg-amber-300 px-6 py-4 text-center text-lg font-bold text-amber-900 shadow-[0_12px_0_rgba(0,0,0,0.18)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_14px_0_rgba(0,0,0,0.2)] active:translate-y-0 active:shadow-[0_10px_0_rgba(0,0,0,0.16)] disabled:opacity-60"
               >
-                오너먼트를 선택하세요!
+                선택한 오너먼트 달기
               </button>
             )}
             {inventory.length > 0 && (
               <div className="w-full rounded-2xl p-3 text-sm text-white/90 mt-2">
-                <p className="mb-2 text-center font-semibold">내 오너먼트</p>
-                <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
+                <p className="mb-2 text-center font-semibold">
+                  내 오너먼트 {drawn ? "(선택됨)" : "(먼저 하나 선택하세요)"}
+                </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {inventory.map((item) => {
                     const isSelected = drawn?.tempId === `inv-${item.tokenId}`;
                     return (
@@ -860,7 +953,7 @@ export function HomeHero({ primaryTree }: Props) {
                             imageUrl: item.imageUrl,
                           })
                         }
-                        className="group flex min-w-[90px] snap-start flex-col items-center gap-1 rounded-xl bg-white/15 p-2 text-white transition hover:-translate-y-0.5 hover:shadow-md"
+                        className="group flex flex-col items-center gap-1 rounded-xl bg-white/12 p-3 text-white transition hover:-translate-y-0.5 hover:shadow-md"
                         style={{
                           border: isSelected ? "2px solid #facc15" : "1px solid rgba(255,255,255,0.2)",
                           boxShadow: isSelected ? "0 0 0 4px rgba(250,204,21,0.25)" : undefined,
@@ -868,14 +961,14 @@ export function HomeHero({ primaryTree }: Props) {
                         }}
                       >
                         <div className="h-16 w-16 overflow-hidden rounded-lg border border-white/20 bg-slate-900/60">
-                        <Image
-                          src={item.imageUrl}
-                          alt={`ornament-${item.tokenId}`}
-                          width={64}
-                          height={64}
-                          className="h-full w-full object-contain"
-                        />
-                      </div>
+                          <Image
+                            src={item.imageUrl}
+                            alt={`ornament-${item.tokenId}`}
+                            width={64}
+                            height={64}
+                            className="h-full w-full object-contain"
+                          />
+                        </div>
                         <span className="text-[11px] text-amber-200">
                           x{item.balance}
                         </span>
@@ -967,7 +1060,12 @@ export function HomeHero({ primaryTree }: Props) {
       )}
 
       {showCreateModal && (
-        <CreateTreeModal onClose={() => setShowCreateModal(false)} />
+        <CreateTreeModal
+          onClose={() => setShowCreateModal(false)}
+          onRequirePasskey={() => {
+            setShowPasskeyEnroll(true);
+          }}
+        />
       )}
 
       {showProfile && (
@@ -1188,7 +1286,7 @@ export function HomeHero({ primaryTree }: Props) {
 
       {/* 패스키 등록 모달: 로그인 후 패스키가 없으면 강제 노출 */}
       <PasskeyEnrollView
-        isOpen={showPasskeyEnroll}
+        isOpen={showPasskeyEnroll && !evmAddress}
         wrapInModal
         onComplete={() => {
           setShowPasskeyEnroll(false);

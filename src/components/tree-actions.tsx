@@ -77,28 +77,68 @@ export function TreeActions({ treeId, ornaments }: Props) {
     setMessage(null);
     setLoading(true);
     try {
-      if (!isLoggedIn || !evm || !evmAddress) {
+      const wallet = (evm as any)?.(5115);
+      const account =
+        evmAddress ??
+        wallet?.address ??
+        (await wallet?.getAccount?.())?.address ??
+        (await wallet?.getAddresses?.())?.[0];
+      if (!isLoggedIn || !evm || !account) {
         openVolrModal?.();
         throw new Error("로그인 후 다시 시도해주세요.");
       }
-      const signMessage = evm(5115)?.signMessage;
-      if (!signMessage) {
-        throw new Error("서명 모듈을 초기화하지 못했습니다.");
+      const signMessage = wallet?.signMessage;
+      const sendTransaction = wallet?.sendTransaction;
+      if (!signMessage || !sendTransaction) {
+        openVolrModal?.();
+        throw new Error("패스키 지갑이 초기화되지 않았습니다. 다시 연결해 주세요.");
       }
       const signedMessage = `Zeta Ornament Gacha (${Date.now()})`;
-      const signature = await signMessage({ message: signedMessage });
+      const signature = await signMessage({ account, message: signedMessage });
       const res = await fetch("/api/gacha/draw", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          walletAddress: evmAddress,
+          walletAddress: account,
           signature,
           signedMessage,
+          treeId,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "뽑기에 실패했습니다.");
-      setDrawn(data.ornaments[0]);
+      const picked = data.ornaments?.[0];
+      if (picked && data?.permit && data?.signature && data?.contractAddress) {
+        const ORNAMENT_PERMIT_ABI = [
+          {
+            type: "function",
+            name: "mintWithSignature",
+            inputs: [
+              {
+                name: "permit",
+                type: "tuple",
+                components: [
+                  { name: "to", type: "address" },
+                  { name: "tokenId", type: "uint256" },
+                  { name: "treeId", type: "uint256" },
+                  { name: "deadline", type: "uint256" },
+                  { name: "nonce", type: "uint256" },
+                ],
+              },
+              { name: "signature", type: "bytes" },
+            ],
+            outputs: [],
+            stateMutability: "nonpayable",
+          },
+        ] as const;
+        const dataField = encodeFunctionData({
+          abi: ORNAMENT_PERMIT_ABI,
+          functionName: "mintWithSignature",
+          args: [data.permit, data.signature],
+        });
+        await sendTransaction({ to: data.contractAddress, data: dataField });
+      }
+      setDrawn(picked);
       setMessage("오너먼트를 뽑았어요! 슬롯을 선택해 달아주세요.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "오류가 발생했습니다.";

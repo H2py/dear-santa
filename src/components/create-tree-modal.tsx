@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useVolr, useVolrModal } from "@volr/react-ui";
+import { useVolr } from "@volr/react-ui"; // re-exports core useVolr
+import { useVolrModal } from "@volr/react-ui";
+import { encodeFunctionData } from "viem";
 
 type BgOption = { id: string; label: string; price: string };
 const backgrounds: BgOption[] = [
@@ -20,6 +22,7 @@ const backgrounds: BgOption[] = [
 ];
 
 const DEFAULT_SHAPE = "classic";
+const CHAIN_ID = 5115; // Volr 기본 체인 (필요 시 수정)
 
 type Slide = { src: string; text: string };
 const slides: Slide[] = [
@@ -28,19 +31,50 @@ const slides: Slide[] = [
   { src: "/home/santa-loading3.png", text: "산타가 루돌프를 혼내고 돌아오겠네요! 곧 끝납니다" },
 ];
 
-export function CreateTreeModal({ onClose }: { onClose: () => void }) {
+const TREE_PERMIT_ABI = [
+  {
+    type: "function",
+    name: "mintWithSignature",
+    inputs: [
+      {
+        name: "permit",
+        type: "tuple",
+        components: [
+          { name: "to", type: "address" },
+          { name: "treeId", type: "uint256" },
+          { name: "backgroundId", type: "uint256" },
+          { name: "uri", type: "string" },
+          { name: "deadline", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+        ],
+      },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
+export function CreateTreeModal({
+  onClose,
+  onRequirePasskey,
+}: {
+  onClose: () => void;
+  onRequirePasskey: () => void;
+}) {
   const router = useRouter();
-  const { evm, evmAddress, isLoggedIn } = useVolr();
+  const volr = useVolr();
   const { open: openVolrModal } = useVolrModal();
+
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [successTreeId, setSuccessTreeId] = useState<string | null>(null);
   const [slideIndex, setSlideIndex] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [bgIndex, setBgIndex] = useState(0);
 
   const selectedBg = backgrounds[bgIndex];
   const previewSrc = useMemo(() => `/bg/bg-${selectedBg.id}.png`, [selectedBg.id]);
-
   const currentSlide = slides[Math.min(slideIndex, slides.length - 1)];
 
   useEffect(() => {
@@ -50,7 +84,6 @@ export function CreateTreeModal({ onClose }: { onClose: () => void }) {
       timerRef.current = null;
       return;
     }
-    // 4초마다 다음 슬라이드, 최대 3번째(인덱스 2)에서 멈춤
     timerRef.current = setInterval(() => {
       setSlideIndex((prev) => Math.min(prev + 1, slides.length - 1));
     }, 4000);
@@ -59,46 +92,71 @@ export function CreateTreeModal({ onClose }: { onClose: () => void }) {
     };
   }, [loading]);
 
+  const ensureGuestSession = useCallback(async () => {
+    try {
+      await fetch("/api/auth/guest", { method: "POST", cache: "no-store", credentials: "include" });
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const requestVolrSignature = async () => {
-    if (!isLoggedIn || !evm) {
-      openVolrModal?.();
-      throw new Error("로그인 후 다시 시도해주세요.");
+    if (!volr) {
+      return;
     }
-    const account = evmAddress;
-    const signMessage = evm(5115)?.signMessage;
-    if (!signMessage || !account) {
-      openVolrModal?.();
-      throw new Error("로그인 후 다시 시도해주세요.");
-    }
-    const signedMessage = `Zeta Tree: 트리 민트 승인 (${Date.now()})`;
-    const signature = await signMessage({ message: signedMessage });
-    return { account, signature, signedMessage };
+    const account = volr.evmAddress;
+    const sendBatch = volr.evm(CHAIN_ID).sendBatch;
+
+    console.log("[tree-create] signer check", {
+      account,
+      hasSend: !!sendBatch,
+    });
+ 
+    return { account };
   };
 
   const handleCreate = async () => {
     setMessage(null);
     setLoading(true);
-    setSlideIndex(0); // 서명 시작 시 로딩 슬라이드 시작
+    setSlideIndex(0);
     try {
-      const { account, signature, signedMessage } = await requestVolrSignature();
-      await fetch("/api/auth/guest", { method: "POST" });
+      await ensureGuestSession();
+      
       const res = await fetch("/api/trees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           background: selectedBg.id,
           shape: DEFAULT_SHAPE,
-          walletAddress: account,
-          signature,
-          signedMessage,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "트리 생성에 실패했습니다.");
+      console.log("[tree-create] /api/trees response", res.status, data);
+      if (!res.ok) {
+        throw new Error(data?.error ?? `트리 생성에 실패했습니다. (status ${res.status})`);
+      }
       const newTreeId = data?.tree?.id as string | undefined;
+      const permit = data?.permit;
+      const permitSig = data?.signature as string | undefined;
+      const contractAddress = data?.contractAddress as string | undefined;
       if (!newTreeId) throw new Error("생성된 트리 ID를 확인할 수 없습니다.");
-      onClose();
-      router.push(`/tree/${newTreeId}`);
+      // 지갑에서 직접 트랜잭션 실행 (mintWithSignature)
+      if (permit && permitSig && contractAddress) {
+        const wallet = (volr as any)?.evm?.(CHAIN_ID);
+        const sendTransaction = wallet?.sendTransaction;
+        if (!sendTransaction) {
+          setMessage("지갑 트랜잭션 모듈을 불러오지 못했습니다. 다시 로그인 후 재시도해주세요.");
+        } else {
+          const dataField = encodeFunctionData({
+            abi: TREE_PERMIT_ABI,
+            functionName: "mintWithSignature",
+            args: [permit, permitSig],
+          });
+          await sendTransaction({ to: contractAddress, data: dataField });
+        }
+      }
+      setSuccessTreeId(newTreeId);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "에러가 발생했습니다.";
       setMessage(msg);
@@ -108,10 +166,7 @@ export function CreateTreeModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
         className="modal-pop relative w-[90vw] max-w-xl rounded-3xl bg-white p-6 text-slate-900 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -124,7 +179,32 @@ export function CreateTreeModal({ onClose }: { onClose: () => void }) {
           ✕
         </button>
 
-        {!loading ? (
+        {successTreeId ? (
+          <div className="space-y-4">
+            <h3 className="text-lg font-bold text-emerald-800">트리가 생성되었습니다!</h3>
+            <p className="text-sm text-slate-700">ID: {successTreeId}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  onClose();
+                  router.push(`/tree/${successTreeId}`);
+                }}
+                className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-center text-base font-semibold text-white shadow-lg shadow-emerald-500/30"
+              >
+                트리 보러가기
+              </button>
+              <button
+                onClick={() => {
+                  setSuccessTreeId(null);
+                  onClose();
+                }}
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        ) : !loading ? (
           <div className="space-y-4">
             <h3 className="text-lg font-bold">트리 만들기</h3>
             <p className="text-sm text-slate-600">
@@ -154,9 +234,7 @@ export function CreateTreeModal({ onClose }: { onClose: () => void }) {
 
                 <div className="mt-3 flex w-full items-center justify-between text-sm text-slate-600">
                   <button
-                    onClick={() =>
-                      setBgIndex((prev) => (prev - 1 + backgrounds.length) % backgrounds.length)
-                    }
+                    onClick={() => setBgIndex((prev) => (prev - 1 + backgrounds.length) % backgrounds.length)}
                     className="rounded-lg border border-white/10 bg-white px-3 py-2 shadow-sm"
                   >
                     ⬅️
@@ -183,8 +261,18 @@ export function CreateTreeModal({ onClose }: { onClose: () => void }) {
               {loading ? "만드는 중..." : "🎄 트리 만들기"}
             </button>
             {message && (
-              <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
-                {message}
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 space-y-2">
+                <p>{message}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onRequirePasskey();
+                    openVolrModal?.();
+                  }}
+                  className="w-full rounded-lg border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition"
+                >
+                  지갑 연결/패스키 확인하기
+                </button>
               </div>
             )}
           </div>

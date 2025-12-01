@@ -20,12 +20,9 @@ importers:
       '@vercel/speed-insights':
         specifier: ^1.2.0
         version: 1.2.0(next@15.5.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
-      '@volr/react':
-        specifier: ^0.1.67
-        version: 0.1.67(react@18.3.1)(typescript@5.9.3)
       '@volr/react-ui':
-        specifier: ^0.1.67
-        version: 0.1.67(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+        specifier: ^0.1.75
+        version: 0.1.75(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       lucide-react:
         specifier: ^0.460.0
         version: 0.460.0(react@18.3.1)
@@ -673,21 +670,21 @@ packages:
       vue-router:
         optional: true
 
-  '@volr/react-ui@0.1.67':
-    resolution: {integrity: sha512-Su+kWxpmLWN5vEvl2w/L6N/Wf1NVsFQlqJRngsNhX665BnP7cokQqn3/NjQtIFy3iwXB8jHUl1HBcDQ8HvAlIw==}
+  '@volr/react-ui@0.1.75':
+    resolution: {integrity: sha512-OOrgppCJoKtHm0duhtkAJHhMN1lVLYvtzZereBmxxsB02/KYEqNdyqlsdTvUOh9eUhacJeTPlzs1WnxSsrY7wA==}
     engines: {node: '>=18'}
     peerDependencies:
       react: '>=18'
       react-dom: '>=18'
 
-  '@volr/react@0.1.67':
-    resolution: {integrity: sha512-lCduxZMdTnsFNfrpeCsslfO7RTV78majr04UAeXgYu8DHu4xQdH1JMyQQDBxjaa1HtDy/kei2RJ0MRRIRmyb6Q==}
+  '@volr/react@0.1.75':
+    resolution: {integrity: sha512-1lRLmC9dvhaO++tXAhb0A38ytED9nHaFebfzNhwGbPX3g65k/GnyD6SGwC3jo2ecebgZwh6bSPqrzO92fhQZwQ==}
     engines: {node: '>=18'}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@volr/sdk-core@0.1.67':
-    resolution: {integrity: sha512-jIhEmDz8FNt20M/SuSSrmCTK3CuieSDondW6wlRmJCzdom39cvlgq/gxdB4B4SR/Y6iVK95DeUlwZ5iOPE7JeQ==}
+  '@volr/sdk-core@0.1.75':
+    resolution: {integrity: sha512-dNK858tAiOEA4hbbFT2YFvOrvmxn2x18Bpr7Qvx4WpYod6pqS9ei6LOnECKhJHFuLc0hCHzXNFaQW+21mnW0XA==}
     engines: {node: '>=18'}
 
   abitype@1.1.0:
@@ -2839,11 +2836,11 @@ snapshots:
       next: 15.5.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react: 18.3.1
 
-  '@volr/react-ui@0.1.67(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
+  '@volr/react-ui@0.1.75(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
     dependencies:
       '@noble/hashes': 2.0.1
-      '@volr/react': 0.1.67(react@18.3.1)(typescript@5.9.3)
-      '@volr/sdk-core': 0.1.67(typescript@5.9.3)
+      '@volr/react': 0.1.75(react@18.3.1)(typescript@5.9.3)
+      '@volr/sdk-core': 0.1.75(typescript@5.9.3)
       axios: 1.13.2
       class-variance-authority: 0.7.1
       clsx: 2.1.1
@@ -2857,9 +2854,9 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@volr/react@0.1.67(react@18.3.1)(typescript@5.9.3)':
+  '@volr/react@0.1.75(react@18.3.1)(typescript@5.9.3)':
     dependencies:
-      '@volr/sdk-core': 0.1.67(typescript@5.9.3)
+      '@volr/sdk-core': 0.1.75(typescript@5.9.3)
       axios: 1.13.2
       react: 18.3.1
     transitivePeerDependencies:
@@ -2869,7 +2866,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@volr/sdk-core@0.1.67(typescript@5.9.3)':
+  '@volr/sdk-core@0.1.75(typescript@5.9.3)':
     dependencies:
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0

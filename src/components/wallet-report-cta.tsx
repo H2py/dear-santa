@@ -189,8 +189,11 @@ export function WalletReportCta() {
       setError("로그인 후 다시 시도해주세요.");
       return;
     }
-    const signMessage = evm(5115)?.signMessage;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wallet = (evm as any)?.(5115);
+    const signMessage = wallet?.signMessage;
     if (!signMessage) {
+      openVolrModal?.();
       setError("서명 모듈 초기화에 실패했습니다.");
       return;
     }
@@ -208,7 +211,7 @@ export function WalletReportCta() {
 
         const issuedYear = new Date().getFullYear();
         const message = buildWalletProofMessage(checksum, issuedYear);
-        const signature = await signMessage({ message });
+        const signature = await signMessage({ account: evmAddress, message });
 
         const res = await fetch(`/api/wallet/${checksum}/stats`, {
           method: "POST",

@@ -37,9 +37,9 @@ export function ProfileModal({
     try {
       // Volr 세션 먼저 종료
       await volrLogout?.().catch(() => {});
-      const redirect = typeof window !== "undefined" ? encodeURIComponent(window.location.origin || "/") : "";
-      const res = await fetch(`/api/auth/logout?redirect=${redirect}`, { method: "POST" });
-      if (res.ok && typeof window !== "undefined") {
+      // 백엔드 세션도 초기화 후 전체 리로드
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+      if (typeof window !== "undefined") {
         window.location.href = "/";
       }
     } catch {

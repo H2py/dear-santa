@@ -26,12 +26,15 @@ async function getTreeDetail(origin: string, id: string) {
   return apiFetch<{ tree: TreeDetail }>(`${origin}/api/trees/${id}`, { cache: "no-store" });
 }
 
+type SearchParams = { treeId?: string };
+
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ treeId?: string }>;
+  searchParams?: Promise<SearchParams>;
 }) {
-  const { treeId } = await searchParams;
+  const params = searchParams ? await searchParams : {};
+  const { treeId } = params ?? {};
   const hdrs = await headers();
   const host = hdrs.get("host") ?? "localhost:3000";
   const protocol = host.includes("localhost") ? "http" : "https";
@@ -41,7 +44,15 @@ export default async function Home({
 
   const myTrees = await getMyTrees(origin);
   const primaryTreeId = treeId ?? myTrees[0]?.id;
-  const primaryTree = primaryTreeId ? (await getTreeDetail(origin, primaryTreeId)).tree : null;
+  let primaryTree: TreeDetail | null = null;
+  if (primaryTreeId) {
+    try {
+      const detail = await getTreeDetail(origin, primaryTreeId);
+      primaryTree = detail.tree;
+    } catch {
+      primaryTree = null;
+    }
+  }
 
   return (
     <main className="min-h-screen px-4 pb-20 pt-6">

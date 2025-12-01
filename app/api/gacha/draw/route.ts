@@ -4,9 +4,13 @@ import { prisma } from "@/src/lib/prisma";
 import { getCurrentUser } from "@/src/lib/auth";
 import { decrementTicket, incrementTickets } from "@/src/lib/user";
 import { ORNAMENT_TOKEN_IDS } from "@/src/lib/constants/gameplay";
-import { getOrnamentContract } from "@/src/lib/onchain";
 import { setSessionCookie } from "@/src/lib/session";
 import { verifyMessage, type Address, type Hex } from "viem";
+import {
+  createOrnamentMintPermit,
+  getOrnamentNonce,
+  isOrnamentRegistered,
+} from "@/src/lib/permits";
 
 const ORNAMENT_IMAGES = Array.from(
   { length: 17 },
@@ -22,16 +26,19 @@ export async function POST(req: Request) {
     walletAddress?: Address;
     signature?: Hex;
     signedMessage?: string;
+    treeId?: string;
   };
 
   const count = typeof body.count === "number" ? body.count : 1;
   const walletAddress = body.walletAddress;
   const signature = body.signature;
   const signedMessage = body.signedMessage;
+  const treeId = typeof body.treeId === "string" ? body.treeId : undefined;
 
   if (count !== 1) return badRequest("only count=1 supported");
   if (!walletAddress || !signature || !signedMessage)
     return badRequest("wallet verification failed");
+  if (!treeId) return badRequest("treeId is required");
 
   const checks = await verifyMessage({
     address: walletAddress,
@@ -81,45 +88,45 @@ export async function POST(req: Request) {
 
   await decrementTicket(activeUser.id);
 
+  // 트리 존재/소유자 확인 + 온체인 treeId 필요
+  const tree = await prisma.tree.findFirst({
+    where: { id: treeId, ownerId: activeUser.id },
+    select: { id: true, onchainTreeId: true },
+  });
+  if (!tree || !tree.onchainTreeId) {
+    return badRequest("유효한 트리를 찾을 수 없습니다. 트리를 먼저 생성하세요.");
+  }
+
   const idx = Math.floor(Math.random() * ORNAMENT_TOKEN_IDS.length);
   const tokenId = ORNAMENT_TOKEN_IDS[idx];
   const imageUrl = ORNAMENT_IMAGES[idx];
   const ornamentId = `orn-${randomUUID()}`;
-  const origin =
-    process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ??
-    new URL(req.url).origin;
 
-  // 온체인 즉시 민트 (동기)
-  const contract = getOrnamentContract();
-  const metadata = {
-    name: `Zeta Ornament #${tokenId}`,
-    description: "Zeta zmas Ornament",
-    image: `${origin}${imageUrl}`,
-    attributes: [{ trait_type: "tokenId", value: tokenId }],
-  };
-  const metadataUri = `data:application/json;utf8,${encodeURIComponent(
-    JSON.stringify(metadata)
-  )}`;
+  // 등록된 오너먼트만 허용
+  const registered = await isOrnamentRegistered(BigInt(tokenId));
+  if (!registered) {
+    return badRequest("선택된 오너먼트가 등록되지 않았습니다. 관리자 등록이 필요합니다.");
+  }
 
-  const txHash = await contract.write.mintOrnament([
-    walletAddress,
-    BigInt(tokenId),
-    1n,
-    metadataUri,
-  ]);
+  // EIP-712 permit 생성 (클라이언트가 mintWithSignature 실행)
+  const nonce = await getOrnamentNonce(walletAddress);
+  const { permit, signature: permitSignature } = await createOrnamentMintPermit({
+    to: walletAddress,
+    tokenId: BigInt(tokenId),
+    treeId: tree.onchainTreeId,
+    nonce,
+  });
 
-  // 기존처럼 온/오프체인 표시에 쓰이는 임시 ID/이미지 반환
+  // 큐에 기록 (추적용)
   await prisma.ornamentMintQueue.create({
     data: {
       userId: activeUser.id,
       walletAddress,
       tokenId,
       amount: 1,
-      status: "SENT",
+      status: "PENDING",
       ornamentId,
       imageUrl,
-      txHash: txHash as string,
-      processedAt: new Date(),
     },
   });
 
@@ -130,11 +137,13 @@ export async function POST(req: Request) {
         type: "FREE_GACHA",
         imageUrl,
         ornamentId,
-        txHash: txHash as string,
-        metadataUri,
         tokenId,
       },
     ],
     remainingTickets: tickets - 1,
+    permit,
+    signature: permitSignature,
+    contractAddress: process.env.ORNAMENT_NFT_ADDRESS ?? process.env.NEXT_PUBLIC_ORNAMENT_ADDRESS,
+    onchainTreeId: tree.onchainTreeId.toString(),
   });
 }

@@ -1,10 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomInt } from "node:crypto";
+import { verifyMessage, type Address, type Hex } from "viem";
 import { prisma } from "@/src/lib/prisma";
 import { getCurrentUser } from "@/src/lib/auth";
 import { badRequest, ok, unauthorized } from "@/src/lib/api";
-import { getTreeContract } from "@/src/lib/onchain";
-import { generateWalletStats } from "@/app/api/wallet/[address]/stats/route";
-import { verifyMessage, type Address, type Hex } from "viem";
+import { generateWalletStats } from "@/src/lib/wallet-stats";
+import {
+  createTreeMintPermit,
+  getTreeNonce,
+} from "@/src/lib/permits";
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -35,6 +38,13 @@ export async function POST(req: Request) {
   });
   const ownerId = existingWalletUser ? existingWalletUser.id : user.id;
 
+  // on-chain treeId: generate unique bigint (timestamp + random) to avoid collisions
+  const onchainTreeId = (() => {
+    const ts = BigInt(Date.now()); // milliseconds
+    const rand = BigInt(randomInt(1_000_000));
+    return ts * 1_000_000n + rand; // ~64 bits, low collision
+  })();
+
   const shareCode = randomUUID().slice(0, 10);
   const tree = await prisma.tree.create({
     data: {
@@ -42,6 +52,7 @@ export async function POST(req: Request) {
       background,
       shape,
       shareCode,
+      onchainTreeId,
     },
     select: {
       id: true,
@@ -51,6 +62,7 @@ export async function POST(req: Request) {
       likeCount: true,
       completedAt: true,
       shareCode: true,
+      onchainTreeId: true,
     },
   });
 
@@ -75,11 +87,18 @@ export async function POST(req: Request) {
           walletAddress: walletAddress.toLowerCase(),
           characterType: stats.character.type,
           emoji: stats.character.emoji,
-          label: stats.character.title ?? stats.label,
-          description: stats.character.description ?? stats.story?.line ?? stats.label,
+          label: stats.character.title ?? stats.personaLabel,
+          description: stats.character.description ?? stats.story?.line ?? stats.personaLabel,
           metrics: {
             totals: stats.totals,
-            chains: stats.chains,
+            chains: stats.chains.map((c) => ({
+              chain: c.chain,
+              txCount: c.txCount,
+              protocolCount: c.protocolCount,
+              gasEth: c.gasEth,
+              bestProfitUsd: c.bestProfitUsd,
+              worstLossUsd: c.worstLossUsd,
+            })),
             similarity: stats.similarity,
             story: stats.story,
           },
@@ -96,9 +115,23 @@ export async function POST(req: Request) {
       console.warn("wallet stats generation failed", err);
     }
 
-    const contract = getTreeContract();
-    const txHash = await contract.write.mintTree([walletAddress as Address, tree.id, metadataUri]);
-    return ok({ tree: { ...tree, characterReportId }, txHash, metadataUri });
+    // EIP-712 permit 생성 (서버 서명만 반환, 실제 민팅은 클라이언트가 수행)
+    const nonce = await getTreeNonce(walletAddress);
+    const { permit, signature: permitSignature } = await createTreeMintPermit({
+      to: walletAddress,
+      treeId: onchainTreeId,
+      backgroundId: BigInt(background),
+      uri: metadataUri,
+      nonce,
+    });
+
+    return ok({
+      tree: { ...tree, characterReportId },
+      metadataUri,
+      permit,
+      signature: permitSignature,
+      contractAddress: process.env.TREE_NFT_ADDRESS ?? process.env.NEXT_PUBLIC_TREE_ADDRESS,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "failed to mint";
     return badRequest(message);
@@ -114,6 +147,7 @@ export async function GET() {
     where: { ownerId: user.id },
     select: {
       id: true,
+      onchainTreeId: true,
       background: true,
       shape: true,
       status: true,

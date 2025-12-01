@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 const backgroundClasses: Record<string, string> = {
   night_sky: "from-slate-900 via-indigo-900 to-cyan-900",
@@ -65,23 +65,15 @@ function useIsDesktop(breakpoint = 768) {
 }
 
 type Props = {
-  treeId: string;
   background: string;
   shape?: string;
-  likeCount: number;
-  liked: boolean;
   ornaments: { slotIndex: number; imageUrl: string }[];
-  onLikeChange?: (liked: boolean) => void;
   selectedSlot?: number | null;
 };
 
 export function TreePreview({
-  treeId: _treeId, // reserved
   background,
-  likeCount,
-  liked,
   ornaments,
-  onLikeChange: _onLikeChange,
   selectedSlot = null,
 }: Props) {
   const isDesktop = useIsDesktop();

@@ -1,97 +1,85 @@
-datasource db {
-  provider = "postgresql"
-  url       = env("POSTGRES_URL_NON_POOLING")             // pooling(6543)
-}
-
 generator client {
   provider = "prisma-client-js"
 }
 
-model User {
-  id             String   @id @default(cuid())
-  createdAt      DateTime @default(now())
-  guestId        String?  @unique
-  walletAddress  String?  @unique
-  walletVerifiedAt DateTime?
-  inviteCode     String?  @unique
-  gachaTickets   Int      @default(3)
-  totalLikesUsed Int      @default(0)
-  ornamentBalance Int     @default(0)
-  lastOrnamentAttachedAt DateTime?
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_URL_NON_POOLING")
+}
 
-  trees            Tree[]
-  ornaments        Ornament[]
-  likes            Like[]
-  referralsSent    Referral[] @relation("Referrer")
-  referredBy       Referral?  @relation("Referred", fields: [referredById], references: [id])
-  referredById     String?  @unique
-  rewards          Reward[]
-  payments         Payment[]
-  ornamentAudits   OrnamentAudit[]
-  rewardClaims     RewardClaim[]
-  characterReports CharacterReport[]
-  ornamentMintQueues OrnamentMintQueue[]
+model User {
+  id                     String              @id @default(cuid())
+  createdAt              DateTime            @default(now())
+  guestId                String?             @unique
+  walletAddress          String?             @unique
+  walletVerifiedAt       DateTime?
+  inviteCode             String?             @unique
+  gachaTickets           Int                 @default(3)
+  totalLikesUsed         Int                 @default(0)
+  ornamentBalance        Int                 @default(0)
+  lastOrnamentAttachedAt DateTime?
+  referredById           String?             @unique
+  characterReports       CharacterReport[]
+  likes                  Like[]
+  ornaments              Ornament[]
+  ornamentAudits         OrnamentAudit[]
+  ornamentMintQueues     OrnamentMintQueue[]
+  payments               Payment[]
+  referralsSent          Referral[]          @relation("Referrer")
+  rewards                Reward[]
+  rewardClaims           RewardClaim[]
+  trees                  Tree[]
+  referredBy             Referral?           @relation("Referred", fields: [referredById], references: [id])
 }
 
 model Tree {
-  id          String     @id @default(cuid())
-  ownerId     String
-  owner       User       @relation(fields: [ownerId], references: [id])
-  background  String
-  shape       String
-  status      TreeStatus @default(DRAFT)
-  likeCount   Int        @default(0)
-  completedAt DateTime?
-  createdAt   DateTime   @default(now())
-  shareCode   String?    @unique
-  metadataUri String?
+  id                String           @id @default(cuid())
+  onchainTreeId     BigInt?          @unique
+  ownerId           String
+  background        String
+  shape             String
+  status            TreeStatus       @default(DRAFT)
+  likeCount         Int              @default(0)
+  completedAt       DateTime?
+  createdAt         DateTime         @default(now())
+  shareCode         String?          @unique
+  metadataUri       String?
   characterReportId String?
-  characterReport   CharacterReport? @relation(fields: [characterReportId], references: [id])
-  sloganId     Int?
-  sloganCustom String?
+  sloganId          Int?
+  sloganCustom      String?
   pinnedOrnamentIds Json?
-
-  ornaments Ornament[]
-  likes     Like[]
-  referrals Referral[]
-  ornamentAudits OrnamentAudit[]
-}
-
-enum TreeStatus {
-  DRAFT
-  COMPLETED
+  likes             Like[]
+  ornaments         Ornament[]
+  ornamentAudits    OrnamentAudit[]
+  referrals         Referral[]
+  characterReport   CharacterReport? @relation(fields: [characterReportId], references: [id])
+  owner             User             @relation(fields: [ownerId], references: [id])
 }
 
 model Ornament {
-  id        String       @id @default(cuid())
+  id        String          @id @default(cuid())
   treeId    String
-  tree      Tree         @relation(fields: [treeId], references: [id])
   ownerId   String
-  owner     User         @relation(fields: [ownerId], references: [id])
   type      OrnamentType
   imageUrl  String
   slotIndex Int
-  createdAt DateTime     @default(now())
+  createdAt DateTime        @default(now())
   tagId     Int?
   tagText   String?
-
-  audits OrnamentAudit[]
+  owner     User            @relation(fields: [ownerId], references: [id])
+  tree      Tree            @relation(fields: [treeId], references: [id])
+  audits    OrnamentAudit[]
 
   @@unique([treeId, slotIndex])
-}
-
-enum OrnamentType {
-  FREE_GACHA
-  PAID_UPLOAD
 }
 
 model Like {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
   treeId    String
-  tree      Tree     @relation(fields: [treeId], references: [id])
   createdAt DateTime @default(now())
+  tree      Tree     @relation(fields: [treeId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, treeId])
 }
@@ -99,66 +87,107 @@ model Like {
 model Referral {
   id           String   @id @default(cuid())
   referrerId   String
-  referrer     User     @relation("Referrer", fields: [referrerId], references: [id])
-  referredUser User?    @relation("Referred")
   createdAt    DateTime @default(now())
   code         String   @unique
   treeId       String?
+  referrer     User     @relation("Referrer", fields: [referrerId], references: [id])
   tree         Tree?    @relation(fields: [treeId], references: [id])
+  referredUser User?    @relation("Referred")
 }
 
 model Reward {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
   amount    String
-  claimed   Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  claims RewardClaim[]
+  claimed   Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id])
+  claims    RewardClaim[]
 }
 
 model Payment {
-  id                String        @id @default(cuid())
+  id                String          @id @default(cuid())
   userId            String
-  user              User          @relation(fields: [userId], references: [id])
   amountCents       Int
-  currency          String        @default("USD")
+  currency          String          @default("USD")
   paymentType       PaymentType
-  provider          String        @default("internal")
+  provider          String          @default("internal")
   providerPaymentId String?
-  status            PaymentStatus @default(PENDING)
+  status            PaymentStatus   @default(PENDING)
   metadata          Json?
-  createdAt         DateTime      @default(now())
-
-  ornamentAudits OrnamentAudit[]
+  createdAt         DateTime        @default(now())
+  ornamentAudits    OrnamentAudit[]
+  user              User            @relation(fields: [userId], references: [id])
 }
 
 model OrnamentAudit {
-  id           String            @id @default(cuid())
-  ornamentId   String?
-  ornament     Ornament?         @relation(fields: [ornamentId], references: [id])
-  treeId       String?
-  tree         Tree?             @relation(fields: [treeId], references: [id])
-  actorId      String
-  actor        User              @relation(fields: [actorId], references: [id])
-  action       OrnamentAuditType
-  paymentId    String?
-  payment      Payment?          @relation(fields: [paymentId], references: [id])
-  detail       Json?
-  createdAt    DateTime          @default(now())
+  id         String            @id @default(cuid())
+  ornamentId String?
+  treeId     String?
+  actorId    String
+  action     OrnamentAuditType
+  paymentId  String?
+  detail     Json?
+  createdAt  DateTime          @default(now())
+  actor      User              @relation(fields: [actorId], references: [id])
+  ornament   Ornament?         @relation(fields: [ornamentId], references: [id])
+  payment    Payment?          @relation(fields: [paymentId], references: [id])
+  tree       Tree?             @relation(fields: [treeId], references: [id])
 }
 
 model RewardClaim {
-  id         String      @id @default(cuid())
-  rewardId   String
-  reward     Reward      @relation(fields: [rewardId], references: [id])
-  userId     String
-  user       User        @relation(fields: [userId], references: [id])
-  wallet     String
-  txHash     String?
-  claimedAt  DateTime    @default(now())
-  status     ClaimStatus @default(PENDING)
+  id        String      @id @default(cuid())
+  rewardId  String
+  userId    String
+  wallet    String
+  txHash    String?
+  claimedAt DateTime    @default(now())
+  status    ClaimStatus @default(PENDING)
+  reward    Reward      @relation(fields: [rewardId], references: [id])
+  user      User        @relation(fields: [userId], references: [id])
+}
+
+model CharacterReport {
+  id            String   @id @default(cuid())
+  userId        String?
+  walletAddress String
+  characterType String
+  emoji         String?
+  label         String?
+  description   String?
+  metrics       Json?
+  issuedYear    Int?
+  createdAt     DateTime @default(now())
+  user          User?    @relation(fields: [userId], references: [id])
+  trees         Tree[]
+}
+
+model OrnamentMintQueue {
+  id            String             @id @default(cuid())
+  userId        String
+  walletAddress String
+  tokenId       Int
+  amount        Int                @default(1)
+  status        OrnamentMintStatus @default(PENDING)
+  error         String?
+  txHash        String?
+  ornamentId    String?
+  imageUrl      String?
+  metadataUri   String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  processedAt   DateTime?
+  user          User               @relation(fields: [userId], references: [id])
+}
+
+enum TreeStatus {
+  DRAFT
+  COMPLETED
+}
+
+enum OrnamentType {
+  FREE_GACHA
+  PAID_UPLOAD
 }
 
 enum PaymentStatus {
@@ -185,41 +214,6 @@ enum ClaimStatus {
   PENDING
   SUCCESS
   FAILED
-}
-
-model CharacterReport {
-  id            String   @id @default(cuid())
-  userId        String?
-  user          User?    @relation(fields: [userId], references: [id])
-  walletAddress String
-  characterType String
-  emoji         String?
-  label         String?
-  description   String?
-  metrics       Json?
-  issuedYear    Int?
-  createdAt     DateTime @default(now())
-
-  trees Tree[]
-}
-
-model OrnamentMintQueue {
-  id           String               @id @default(cuid())
-  userId       String
-  walletAddress String
-  tokenId      Int
-  amount       Int                  @default(1)
-  status       OrnamentMintStatus   @default(PENDING)
-  error        String?
-  txHash       String?
-  ornamentId   String?
-  imageUrl     String?
-  metadataUri  String?
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-  processedAt  DateTime?
-
-  user         User                 @relation(fields: [userId], references: [id])
 }
 
 enum OrnamentMintStatus {
