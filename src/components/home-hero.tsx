@@ -2,18 +2,14 @@
 
 // cspell:ignore gacha GACHA giftbox
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { TreePreview } from "@/src/components/tree-preview";
 import { CreateTreeModal } from "@/src/components/create-tree-modal";
 import { ProfileModal } from "@/src/components/profile-modal";
 import { LeaderboardModal } from "@/src/components/leaderboard-modal";
-import {
-  useVolrModal,
-  useVolr,
-  PasskeyEnrollView,
-} from "@volr/react-ui";
+import { useVolrModal, PasskeyEnrollView } from "@volr/react-ui";
+import { useVolr } from "@volr/react";
 import type { TreeDetail } from "@/src/lib/types";
 
 type Props = {
@@ -29,7 +25,6 @@ export function HomeHero({ primaryTree }: Props) {
   const [showQuest, setShowQuest] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showLetter, setShowLetter] = useState(false);
-  const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showShareSheet, setShowShareSheet] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPasskeyEnroll, setShowPasskeyEnroll] = useState(false);
@@ -86,26 +81,23 @@ export function HomeHero({ primaryTree }: Props) {
     return tokenUri;
   };
   const meFetchTsRef = useRef(0);
-  const meCacheRef = useRef<any>(null);
+  const meCacheRef = useRef<unknown>(null);
   const meFetchedRef = useRef(false);
 
-  const fetchMeOnce = useCallback(
-    async (force = false) => {
-      const now = Date.now();
-      if (!force) {
-        if (meFetchedRef.current && meCacheRef.current) return meCacheRef.current;
-        if (now - meFetchTsRef.current < 5000 && meCacheRef.current) return meCacheRef.current;
-      }
-      meFetchTsRef.current = now;
-      const res = await fetch("/api/me", { cache: "no-store" });
-      if (!res.ok) throw new Error("세션 정보를 불러오지 못했습니다.");
-      const data = await res.json();
-      meCacheRef.current = data;
-      meFetchedRef.current = true;
-      return data;
-    },
-    []
-  );
+  const fetchMeOnce = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force) {
+      if (meFetchedRef.current && meCacheRef.current) return meCacheRef.current;
+      if (now - meFetchTsRef.current < 5000 && meCacheRef.current) return meCacheRef.current;
+    }
+    meFetchTsRef.current = now;
+    const res = await fetch("/api/me", { cache: "no-store" });
+    if (!res.ok) throw new Error("세션 정보를 불러오지 못했습니다.");
+    const data = await res.json();
+    meCacheRef.current = data;
+    meFetchedRef.current = true;
+    return data;
+  }, []);
 
   useEffect(() => {
     fetchMeOnce().then((data) => {
@@ -455,8 +447,8 @@ export function HomeHero({ primaryTree }: Props) {
       if (typeof data.likedByCurrentUser === "boolean") {
         setLiked(data.likedByCurrentUser);
       }
-    } catch {
-      const msg = err instanceof Error ? err.message : "";
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "";
       // 이미 반영된 상태라면 롤백 없이 유지
       if (
         msg.includes("already liked") ||

@@ -16,7 +16,7 @@ const volrConfig: VolrUIConfig = {
   enabledLoginMethods: ["email", "social", "siwe"],
   socialProviders: ["google", "twitter", "apple"],
   // Volr dev API를 사용하도록 강제 (필요 시 제거)
-  // @ts-ignore
+  // @ts-expect-error Volr UI config supports internal dev API override
   __devApiBaseUrl: "https://dev-api.volr.io",
 };
 

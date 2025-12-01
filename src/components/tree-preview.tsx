@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { Heart } from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 const backgroundClasses: Record<string, string> = {
@@ -77,20 +76,15 @@ type Props = {
 };
 
 export function TreePreview({
-  treeId,
+  treeId: _treeId, // reserved
   background,
   likeCount,
   liked,
   ornaments,
-  onLikeChange,
+  onLikeChange: _onLikeChange,
   selectedSlot = null,
 }: Props) {
   const isDesktop = useIsDesktop();
-  const [localLiked, setLocalLiked] = useState<boolean>(liked);
-  const [localLikes, setLocalLikes] = useState<number>(likeCount);
-  const [likePending, setLikePending] = useState(false);
-  const desiredLikedRef = useRef<boolean>(liked);
-  const syncingRef = useRef(false);
 
   const bgClass = backgroundClasses[background] ?? "";
   const backgroundStyle: CSSProperties | undefined = (() => {

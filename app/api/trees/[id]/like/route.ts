@@ -1,6 +1,5 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/src/lib/prisma";
-import { badRequest, forbidden, notFound, ok, unauthorized } from "@/src/lib/api";
+import { forbidden, notFound, ok, unauthorized } from "@/src/lib/api";
 import { getCurrentUser } from "@/src/lib/auth";
 import { incrementLikesUsed, decrementLikesUsed } from "@/src/lib/user";
 

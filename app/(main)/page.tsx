@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { headers } from "next/headers";
 import { apiFetch } from "@/src/lib/api-client";
 import type { TreeDetail, TreeSummary } from "@/src/lib/types";

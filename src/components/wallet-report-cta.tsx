@@ -156,10 +156,6 @@ const aggregateReports = (reports: StatsResponse[]): CombinedReport => {
   return { aggregate, wallets: reports };
 };
 
-type Eip1193Provider = {
-  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-};
-
 export function WalletReportCta() {
   const router = useRouter();
   const { evm, evmAddress, isLoggedIn } = useVolr();
